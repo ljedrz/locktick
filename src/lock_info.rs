@@ -10,22 +10,23 @@ use std::{
 use simple_moving_average::{NoSumSMA, SMA};
 use tracing::trace;
 
-// FIXME: paths
 fn call_location() -> Arc<str> {
     let backtrace = backtrace::Backtrace::new();
     let frames = backtrace.frames();
     let symbol = frames
         .iter()
         .flat_map(|frame| frame.symbols())
-        .find(|symbol| {
-            symbol
-                .filename()
-                .is_some_and(|name| name.to_str().is_some_and(|s| s.contains("snark")))
+        .filter(|symbol| {
+            if let Some(filename) = symbol.filename().and_then(|path| path.to_str()) {
+                !filename.contains("locktick") && !filename.contains("rustc")
+            } else {
+                false
+            }
         })
+        .next()
         .unwrap();
 
     let filename = symbol.filename().unwrap().to_str().unwrap();
-    let filename = filename.trim_start_matches("/home/ljedrz/git/aleo/");
     format!(
         "{}@{}:{}",
         filename,
