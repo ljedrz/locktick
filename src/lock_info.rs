@@ -1,4 +1,5 @@
 use std::{
+    cmp,
     collections::HashMap,
     fmt,
     ops::{Deref, DerefMut},
@@ -235,10 +236,48 @@ pub enum GuardKind {
     Write,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Accesses {
     Mutex(usize),
     RwLock { reads: usize, writes: usize },
+}
+
+impl Ord for Accesses {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        match (self, other) {
+            (Self::Mutex(a), Self::Mutex(b)) => a.cmp(b),
+            (
+                Self::RwLock {
+                    reads: r1,
+                    writes: w1,
+                },
+                Self::RwLock {
+                    reads: r2,
+                    writes: w2,
+                },
+            ) => {
+                if w1.cmp(w2) != cmp::Ordering::Equal {
+                    w1.cmp(w2)
+                } else {
+                    r1.cmp(r2)
+                }
+            }
+            (
+                Self::Mutex(_),
+                Self::RwLock {
+                    reads: _,
+                    writes: _,
+                },
+            ) => cmp::Ordering::Greater,
+            _ => cmp::Ordering::Less,
+        }
+    }
+}
+
+impl PartialOrd for Accesses {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl Accesses {
