@@ -38,25 +38,36 @@ fn call_location() -> Arc<str> {
 
 pub static LOCK_INFOS: OnceLock<RwLock<HashMap<Arc<str>, LockInfo>>> = OnceLock::new();
 
-#[derive(Debug, Clone)]
-pub struct LockInfo {
+#[derive(Clone, Debug)]
+pub struct LockInfo(Arc<LockInfoInner>);
+
+#[derive(Debug)]
+pub struct LockInfoInner {
     kind: LockKind,
-    pub(crate) state: Arc<Mutex<LockState>>,
+    pub(crate) state: Mutex<LockState>,
     pub(crate) location: Arc<str>,
-    pub(crate) accesses: Arc<Mutex<Accesses>>,
-    avg_duration: Arc<Mutex<NoSumSMA<Duration, u32, 20>>>,
+    pub(crate) accesses: Mutex<Accesses>,
+    avg_duration: Mutex<NoSumSMA<Duration, u32, 20>>,
+}
+
+impl Deref for LockInfo {
+    type Target = LockInfoInner;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 impl LockInfo {
     pub fn new(kind: LockKind) -> Self {
         let location = call_location();
-        let info = Self {
+        let info = Self(Arc::new(LockInfoInner {
             kind,
-            state: Arc::new(Mutex::new(LockState::Locked)),
+            state: Mutex::new(LockState::Locked),
             location: location.clone(),
-            accesses: Arc::new(Mutex::new(Accesses::new(kind))),
-            avg_duration: Arc::new(Mutex::new(NoSumSMA::from_zero(Duration::ZERO))),
-        };
+            accesses: Mutex::new(Accesses::new(kind)),
+            avg_duration: Mutex::new(NoSumSMA::from_zero(Duration::ZERO)),
+        }));
 
         LOCK_INFOS
             .get_or_init(Default::default)
@@ -66,7 +77,9 @@ impl LockInfo {
 
         info
     }
+}
 
+impl LockInfoInner {
     pub(crate) fn guard<T>(&self, actual_guard: T, guard_kind: GuardKind) -> LockGuard<T> {
         if let Some(info) = LOCK_INFOS
             .get_or_init(Default::default) // TODO: check if this is really needed
@@ -129,7 +142,7 @@ impl LockInfo {
     }
 }
 
-impl fmt::Display for LockInfo {
+impl fmt::Display for LockInfoInner {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -196,6 +209,8 @@ impl<T: DerefMut> DerefMut for LockGuard<T> {
 
 impl<T> Drop for LockGuard<T> {
     fn drop(&mut self) {
+        let timestamp = Instant::now();
+
         if let Some(info) = LOCK_INFOS
             .get()
             .unwrap()
@@ -203,7 +218,7 @@ impl<T> Drop for LockGuard<T> {
             .unwrap()
             .get(&self.lock_location)
         {
-            let duration = Instant::now() - self.acquire_time;
+            let duration = timestamp - self.acquire_time;
 
             // TODO: considering providing info on number of current readers
             match &mut *info.state.lock().unwrap() {
