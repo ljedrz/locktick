@@ -54,36 +54,6 @@ pub fn lock_snapshots() -> Vec<LockSnapshot> {
     snapshots
 }
 
-pub struct LockSnapshot {
-    pub timestamp: Instant,
-    pub location: Arc<str>,
-    pub accesses: Accesses,
-    pub guards: Vec<GuardDetails>,
-    pub avg_duration: Duration,
-}
-
-impl From<&LockInfo> for LockSnapshot {
-    fn from(info: &LockInfo) -> Self {
-        let timestamp = Instant::now();
-        let mut guards = info
-            .guards
-            .lock()
-            .unwrap()
-            .values()
-            .cloned()
-            .collect::<Vec<_>>();
-        guards.sort_unstable_by_key(|g| g.acquire_time);
-
-        Self {
-            timestamp,
-            location: info.location.clone(),
-            accesses: *info.accesses.lock().unwrap(),
-            guards,
-            avg_duration: info.avg_duration.lock().unwrap().get_average(),
-        }
-    }
-}
-
 /// This object contains all the details related to a given lock, and it can only
 /// be found in the `LOCK_INFOS` static.
 #[derive(Debug)]
@@ -120,17 +90,45 @@ impl LockInfo {
     }
 }
 
-impl fmt::Display for LockInfo {
+pub struct LockSnapshot {
+    pub timestamp: Instant,
+    pub location: Arc<str>,
+    pub accesses: Accesses,
+    pub guards: Vec<GuardDetails>,
+    pub avg_duration: Duration,
+}
+
+impl From<&LockInfo> for LockSnapshot {
+    fn from(info: &LockInfo) -> Self {
+        let timestamp = Instant::now();
+        let mut guards = info
+            .guards
+            .lock()
+            .unwrap()
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
+        guards.sort_unstable_by_key(|g| g.acquire_time);
+
+        Self {
+            timestamp,
+            location: info.location.clone(),
+            accesses: *info.accesses.lock().unwrap(),
+            guards,
+            avg_duration: info.avg_duration.lock().unwrap().get_average(),
+        }
+    }
+}
+
+impl fmt::Display for LockSnapshot {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "{}: {}; avg guard duration: {:?}",
-            self.location,
-            self.accesses.lock().unwrap(),
-            self.avg_duration.lock().unwrap().get_average(),
+            self.location, self.accesses, self.avg_duration,
         )?;
 
-        for guard in self.guards.lock().unwrap().values() {
+        for guard in &self.guards {
             write!(f, "\n- {}", guard)?;
         }
 
