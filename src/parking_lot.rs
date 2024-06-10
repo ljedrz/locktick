@@ -78,120 +78,122 @@ impl<T: Default> Default for RwLock<T> {
 
 #[cfg(test)]
 mod tests {
-    use std::{thread::sleep, time::Duration};
+    use std::{collections::HashMap, sync::Arc};
 
-    use super::*;
-    use crate::lock_info::{LockState, LOCK_INFOS};
+    use crate::{lock_info::*, parking_lot::*};
+
+    fn lock_infos() -> std::sync::RwLockReadGuard<'static, HashMap<Arc<str>, LockInfo>> {
+        LOCK_INFOS.get().unwrap().read().unwrap()
+    }
 
     #[test]
     fn rwlock() {
         let obj = String::from("derp");
         let lock = RwLock::new(obj);
-        assert_eq!(
-            *LOCK_INFOS
-                .get()
-                .unwrap()
-                .read()
-                .unwrap()
-                .get(lock.info.location)
-                .unwrap()
-                .state
-                .lock()
-                .unwrap(),
-            LockState::Locked
-        );
+
         let read1 = lock.read();
-        assert_eq!(
-            *LOCK_INFOS
-                .get()
-                .unwrap()
-                .read()
-                .unwrap()
-                .get(lock.info.location)
-                .unwrap()
-                .state
-                .lock()
-                .unwrap(),
-            LockState::Reading(1)
-        );
-        // TODO: check location
-        sleep(Duration::from_millis(1));
+        {
+            assert_eq!(read1.lock_location, lock.location);
+            let infos = lock_infos();
+            assert_eq!(infos.len(), 1);
+            let info = infos.values().next().unwrap();
+            assert_eq!(
+                *info.accesses.lock().unwrap(),
+                Accesses::RwLock {
+                    reads: 1,
+                    writes: 0
+                }
+            );
+            let guards = info.guards.lock().unwrap();
+            assert_eq!(guards.len(), 1);
+            let _guard = guards.get(&read1.acquire_time).unwrap();
+            // assert_ne!(guard.acquire_location, lock.location);
+        }
+
         let read2 = lock.read();
-        assert_eq!(
-            *LOCK_INFOS
-                .get()
-                .unwrap()
-                .read()
-                .unwrap()
-                .get(lock.info.location)
-                .unwrap()
-                .state
-                .lock()
-                .unwrap(),
-            LockState::Reading(2)
-        );
-        // TODO: check location
-        sleep(Duration::from_millis(1));
+        {
+            assert_eq!(read2.lock_location, lock.location);
+            let infos = lock_infos();
+            assert_eq!(infos.len(), 1);
+            let info = infos.values().next().unwrap();
+            assert_eq!(
+                *info.accesses.lock().unwrap(),
+                Accesses::RwLock {
+                    reads: 2,
+                    writes: 0
+                }
+            );
+            let guards = info.guards.lock().unwrap();
+            assert_eq!(guards.len(), 2);
+            let _guard = guards.get(&read1.acquire_time).unwrap();
+            // assert_ne!(guard.acquire_location, lock.location);
+        }
 
         drop(read1);
-        assert_eq!(
-            *LOCK_INFOS
-                .get()
-                .unwrap()
-                .read()
-                .unwrap()
-                .get(lock.info.location)
-                .unwrap()
-                .state
-                .lock()
-                .unwrap(),
-            LockState::Reading(1)
-        );
+        {
+            let infos = lock_infos();
+            assert_eq!(infos.len(), 1);
+            let info = infos.values().next().unwrap();
+            assert_eq!(
+                *info.accesses.lock().unwrap(),
+                Accesses::RwLock {
+                    reads: 2,
+                    writes: 0
+                }
+            );
+            let guards = info.guards.lock().unwrap();
+            assert_eq!(guards.len(), 1);
+        }
+
         drop(read2);
-        assert_eq!(
-            *LOCK_INFOS
-                .get()
-                .unwrap()
-                .read()
-                .unwrap()
-                .get(lock.info.location)
-                .unwrap()
-                .state
-                .lock()
-                .unwrap(),
-            LockState::Locked
-        );
+        {
+            let infos = lock_infos();
+            assert_eq!(infos.len(), 1);
+            let info = infos.values().next().unwrap();
+            assert_eq!(
+                *info.accesses.lock().unwrap(),
+                Accesses::RwLock {
+                    reads: 2,
+                    writes: 0
+                }
+            );
+            let guards = info.guards.lock().unwrap();
+            assert_eq!(guards.len(), 0);
+        }
 
         let write = lock.write();
-        assert_eq!(
-            *LOCK_INFOS
-                .get()
-                .unwrap()
-                .read()
-                .unwrap()
-                .get(lock.info.location)
-                .unwrap()
-                .state
-                .lock()
-                .unwrap(),
-            LockState::Writing
-        );
-        // TODO: check location
-        drop(write);
-        assert_eq!(
-            *LOCK_INFOS
-                .get()
-                .unwrap()
-                .read()
-                .unwrap()
-                .get(lock.info.location)
-                .unwrap()
-                .state
-                .lock()
-                .unwrap(),
-            LockState::Locked
-        );
+        {
+            assert_eq!(write.lock_location, lock.location);
+            let infos = lock_infos();
+            assert_eq!(infos.len(), 1);
+            let info = infos.values().next().unwrap();
+            assert_eq!(
+                *info.accesses.lock().unwrap(),
+                Accesses::RwLock {
+                    reads: 2,
+                    writes: 1
+                }
+            );
+            let guards = info.guards.lock().unwrap();
+            assert_eq!(guards.len(), 1);
+            let _guard = guards.get(&write.acquire_time).unwrap();
+            // assert_ne!(guard.acquire_location, lock.location);
+        }
 
-        // TODO: check LOCK_INFOS
+        drop(write);
+        {
+            let infos = lock_infos();
+            assert_eq!(infos.len(), 1);
+            let info = infos.values().next().unwrap();
+            assert_eq!(
+                *info.accesses.lock().unwrap(),
+                Accesses::RwLock {
+                    reads: 2,
+                    writes: 1
+                }
+            );
+            let guards = info.guards.lock().unwrap();
+            assert_eq!(guards.len(), 0);
+        }
     }
 }

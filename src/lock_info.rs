@@ -18,7 +18,11 @@ fn call_location() -> Arc<str> {
         .flat_map(|frame| frame.symbols())
         .find(|symbol| {
             if let Some(filename) = symbol.filename().and_then(|path| path.to_str()) {
-                !filename.contains("locktick") && !filename.contains("rustc")
+                if cfg!(test) {
+                    filename.contains("locktick")
+                } else {
+                    !filename.contains("locktick") && !filename.contains("rustc")
+                }
             } else {
                 false
             }
@@ -114,8 +118,8 @@ pub enum LockKind {
 /// identified in the `LOCK_INFOS` static.
 pub struct LockGuard<T> {
     pub(crate) guard: T,
-    lock_location: Arc<str>,
-    acquire_time: Instant,
+    pub lock_location: Arc<str>,
+    pub acquire_time: Instant,
 }
 
 impl<T> LockGuard<T> {
@@ -179,8 +183,8 @@ impl<T> LockGuard<T> {
 /// `LockGuard` - provides a full set of data related to a single guard.
 #[derive(Debug)]
 pub struct GuardDetails {
-    guard_kind: GuardKind,
-    acquire_location: Arc<str>,
+    pub guard_kind: GuardKind,
+    pub acquire_location: Arc<str>,
     acquire_time: Instant, // duplicated for fmt::Debug purposes
 }
 
@@ -320,14 +324,8 @@ impl fmt::Display for Accesses {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn location() {
-        let info = LockInfo::new(LockKind::Mutex);
-
-        // FIXME
-        // assert_eq!(info.location.line(), 249);
-        // assert_eq!(info.location.column(), 20);
+        // TODO
     }
 }
