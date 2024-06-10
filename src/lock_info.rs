@@ -44,9 +44,8 @@ pub struct LockInfo(Arc<LockInfoInner>);
 #[derive(Debug)]
 pub struct LockInfoInner {
     kind: LockKind,
-    pub(crate) state: Mutex<LockState>,
     pub(crate) location: Arc<str>,
-    pub(crate) accesses: Mutex<Accesses>,
+    pub(crate) details: Mutex<(LockState, Accesses)>,
     avg_duration: Mutex<NoSumSMA<Duration, u32, 20>>,
 }
 
@@ -63,9 +62,8 @@ impl LockInfo {
         let location = call_location();
         let info = Self(Arc::new(LockInfoInner {
             kind,
-            state: Mutex::new(LockState::Locked),
             location: location.clone(),
-            accesses: Mutex::new(Accesses::new(kind)),
+            details: Mutex::new((LockState::Locked, Accesses::new(kind))),
             avg_duration: Mutex::new(NoSumSMA::from_zero(Duration::ZERO)),
         }));
 
@@ -74,6 +72,7 @@ impl LockInfo {
             .write()
             .unwrap()
             .insert(location, info.clone());
+        // TODO: handle dupes
 
         info
     }
@@ -87,8 +86,7 @@ impl LockInfoInner {
             .unwrap()
             .get(&self.location)
         {
-            let curr_state = &mut *info.state.lock().unwrap();
-            let accesses = &mut *info.accesses.lock().unwrap();
+            let (curr_state, accesses) = &mut *info.details.lock().unwrap();
 
             match guard_kind {
                 GuardKind::Lock => {
@@ -136,21 +134,31 @@ impl LockInfoInner {
                     }
                 }
             }
+        } else {
+            unreachable!("drop");
         }
 
         LockGuard::new(actual_guard, self.location.clone(), guard_kind)
+    }
+
+    pub fn was_used(&self) -> bool {
+        match self.details.lock().unwrap().1 {
+            Accesses::Mutex(n) => n != 0,
+            Accesses::RwLock { reads, writes } => reads + writes != 0,
+        }
     }
 }
 
 impl fmt::Display for LockInfoInner {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (state, accesses) = &*self.details.lock().unwrap();
         write!(
             f,
             "{:?} {:?}: {:?}; {}; avg: {:?}",
             self.kind,
             self.location,
-            &*self.state.lock().unwrap(),
-            &*self.accesses.lock().unwrap(),
+            state,
+            accesses,
             self.avg_duration.lock().unwrap().get_average(),
         )
     }
@@ -221,7 +229,7 @@ impl<T> Drop for LockGuard<T> {
             let duration = timestamp - self.acquire_time;
 
             // TODO: considering providing info on number of current readers
-            match &mut *info.state.lock().unwrap() {
+            match &mut info.details.lock().unwrap().0 {
                 LockState::Reading(num_readers) if *num_readers > 1 => {
                     *num_readers -= 1;
                 }
