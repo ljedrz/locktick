@@ -86,11 +86,7 @@ impl LockInfoInner {
     pub(crate) fn guard<T>(&self, guard: T, guard_kind: GuardKind) -> LockGuard<T> {
         let acquire_location = call_location();
         let acquire_time = Instant::now();
-        trace!(
-            "Acquiring a {:?} guard at {:?}",
-            guard_kind,
-            acquire_location
-        );
+        trace!("Acquiring a {:?} guard at {}", guard_kind, acquire_location);
 
         let details = GuardDetails {
             guard_kind,
@@ -162,7 +158,7 @@ impl fmt::Display for LockInfoInner {
         )?;
 
         for guard in self.guards.lock().unwrap().values() {
-            write!(f, "- {}", guard)?;
+            write!(f, "\n- {}", guard)?;
         }
 
         Ok(())
@@ -232,16 +228,14 @@ impl<T> Drop for LockGuard<T> {
                 .unwrap()
                 .remove(&self.details.acquire_time);
 
-            let mut avg_duration = info.avg_duration.lock().unwrap();
-            avg_duration.add_sample(duration);
+            info.avg_duration.lock().unwrap().add_sample(duration);
 
             trace!(
-                "The {:?} guard for lock {:?} acquired at {:?} was dropped after {:?} (avg: {:?})",
+                "The {:?} guard for lock {} acquired at {} was dropped after {:?}",
                 self.details.guard_kind,
                 self.details.lock_location,
                 self.details.acquire_location,
                 duration,
-                avg_duration.get_average(),
             );
         }
     }
