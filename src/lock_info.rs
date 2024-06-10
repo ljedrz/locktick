@@ -1,6 +1,6 @@
 use std::{
     cmp,
-    collections::HashMap,
+    collections::{hash_map::Entry, HashMap},
     fmt,
     ops::{Deref, DerefMut},
     sync::{Arc, Mutex, OnceLock, RwLock},
@@ -60,21 +60,26 @@ impl Deref for LockInfo {
 impl LockInfo {
     pub fn new(kind: LockKind) -> Self {
         let location = call_location();
-        let info = Self(Arc::new(LockInfoInner {
-            kind,
-            location: location.clone(),
-            details: Mutex::new((LockState::Locked, Accesses::new(kind))),
-            avg_duration: Mutex::new(NoSumSMA::from_zero(Duration::ZERO)),
-        }));
 
-        LOCK_INFOS
+        match LOCK_INFOS
             .get_or_init(Default::default)
             .write()
             .unwrap()
-            .insert(location, info.clone());
-        // TODO: handle dupes
+            .entry(location.clone())
+        {
+            Entry::Vacant(entry) => {
+                let info = Self(Arc::new(LockInfoInner {
+                    kind,
+                    location,
+                    details: Mutex::new((LockState::Locked, Accesses::new(kind))),
+                    avg_duration: Mutex::new(NoSumSMA::from_zero(Duration::ZERO)),
+                }));
 
-        info
+                entry.insert(info.clone());
+                info
+            }
+            Entry::Occupied(entry) => entry.get().clone(),
+        }
     }
 }
 
@@ -134,8 +139,6 @@ impl LockInfoInner {
                     }
                 }
             }
-        } else {
-            unreachable!("drop");
         }
 
         LockGuard::new(actual_guard, self.location.clone(), guard_kind)
