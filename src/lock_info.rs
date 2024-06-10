@@ -41,6 +41,49 @@ fn call_location() -> Arc<str> {
 
 pub static LOCK_INFOS: OnceLock<RwLock<HashMap<Arc<str>, LockInfo>>> = OnceLock::new();
 
+pub fn lock_snapshots() -> Vec<LockSnapshot> {
+    let mut snapshots = LOCK_INFOS
+        .get_or_init(Default::default)
+        .read()
+        .unwrap()
+        .values()
+        .map(LockSnapshot::from)
+        .collect::<Vec<_>>();
+    snapshots.sort_unstable_by_key(|s| s.accesses);
+
+    snapshots
+}
+
+pub struct LockSnapshot {
+    pub timestamp: Instant,
+    pub location: Arc<str>,
+    pub accesses: Accesses,
+    pub guards: Vec<GuardDetails>,
+    pub avg_duration: Duration,
+}
+
+impl From<&LockInfo> for LockSnapshot {
+    fn from(info: &LockInfo) -> Self {
+        let timestamp = Instant::now();
+        let mut guards = info
+            .guards
+            .lock()
+            .unwrap()
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
+        guards.sort_unstable_by_key(|g| g.acquire_time);
+
+        Self {
+            timestamp,
+            location: info.location.clone(),
+            accesses: *info.accesses.lock().unwrap(),
+            guards,
+            avg_duration: info.avg_duration.lock().unwrap().get_average(),
+        }
+    }
+}
+
 /// This object contains all the details related to a given lock, and it can only
 /// be found in the `LOCK_INFOS` static.
 #[derive(Debug)]
@@ -181,11 +224,11 @@ impl<T> LockGuard<T> {
 
 /// Guard-related information which - when paired with the corresponding
 /// `LockGuard` - provides a full set of data related to a single guard.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GuardDetails {
     pub guard_kind: GuardKind,
     pub acquire_location: Arc<str>,
-    acquire_time: Instant, // duplicated for fmt::Debug purposes
+    acquire_time: Instant, // duplicated for fmt::Display purposes
 }
 
 impl fmt::Display for GuardDetails {
