@@ -37,27 +37,16 @@ fn call_location() -> Arc<str> {
 
 pub static LOCK_INFOS: OnceLock<RwLock<HashMap<Arc<str>, LockInfo>>> = OnceLock::new();
 
-#[derive(Clone, Debug)]
-pub struct LockInfo(Arc<LockInfoInner>);
-
 #[derive(Debug)]
-pub struct LockInfoInner {
+pub struct LockInfo {
     pub(crate) location: Arc<str>,
     pub(crate) accesses: Mutex<Accesses>,
     pub(crate) guards: Mutex<HashMap<Instant, GuardDetails>>,
     avg_duration: Mutex<NoSumSMA<Duration, u32, 20>>,
 }
 
-impl Deref for LockInfo {
-    type Target = LockInfoInner;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
 impl LockInfo {
-    pub fn new(kind: LockKind) -> Self {
+    pub fn register(kind: LockKind) -> Arc<str> {
         let location = call_location();
 
         match LOCK_INFOS
@@ -67,30 +56,70 @@ impl LockInfo {
             .entry(location.clone())
         {
             Entry::Vacant(entry) => {
-                let info = Self(Arc::new(LockInfoInner {
-                    location,
+                let info = Self {
+                    location: location.clone(),
                     accesses: Mutex::new(Accesses::new(kind)),
                     guards: Default::default(),
                     avg_duration: Mutex::new(NoSumSMA::from_zero(Duration::ZERO)),
-                }));
+                };
 
-                entry.insert(info.clone());
-                info
+                entry.insert(info);
+                location
             }
-            Entry::Occupied(entry) => entry.get().clone(),
+            Entry::Occupied(entry) => entry.get().location.clone(),
         }
+    }
+
+    pub fn was_used(&self) -> bool {
+        match &*self.accesses.lock().unwrap() {
+            Accesses::Mutex(n) => *n != 0,
+            Accesses::RwLock { reads, writes } => reads + writes != 0,
+        }
+    }
+
+    pub fn is_active(&self) -> bool {
+        !self.guards.lock().unwrap().is_empty()
     }
 }
 
-impl LockInfoInner {
-    pub(crate) fn guard<T>(&self, guard: T, guard_kind: GuardKind) -> LockGuard<T> {
+impl fmt::Display for LockInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}: {}; avg guard duration: {:?}",
+            self.location,
+            self.accesses.lock().unwrap(),
+            self.avg_duration.lock().unwrap().get_average(),
+        )?;
+
+        for guard in self.guards.lock().unwrap().values() {
+            write!(f, "\n- {}", guard)?;
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LockKind {
+    Mutex,
+    RwLock,
+}
+
+pub struct LockGuard<T> {
+    pub(crate) guard: T,
+    details: GuardDetails,
+}
+
+impl<T> LockGuard<T> {
+    pub(crate) fn new(guard: T, guard_kind: GuardKind, lock_location: &Arc<str>) -> Self {
         let acquire_location = call_location();
         let acquire_time = Instant::now();
         trace!("Acquiring a {:?} guard at {}", guard_kind, acquire_location);
 
         let details = GuardDetails {
             guard_kind,
-            lock_location: self.location.clone(),
+            lock_location: lock_location.clone(),
             acquire_location,
             acquire_time,
         };
@@ -99,14 +128,14 @@ impl LockInfoInner {
             .get_or_init(Default::default) // TODO: check if this is really needed
             .read()
             .unwrap()
-            .get(&self.location)
+            .get(lock_location)
         {
             info.guards
                 .lock()
                 .unwrap()
                 .insert(details.acquire_time, details.clone());
-            let accesses = &mut *info.accesses.lock().unwrap();
 
+            let accesses = &mut *info.accesses.lock().unwrap();
             match guard_kind {
                 GuardKind::Lock => {
                     if let Accesses::Mutex(unlocks) = accesses {
@@ -134,46 +163,6 @@ impl LockInfoInner {
 
         LockGuard { guard, details }
     }
-
-    pub fn was_used(&self) -> bool {
-        match &*self.accesses.lock().unwrap() {
-            Accesses::Mutex(n) => *n != 0,
-            Accesses::RwLock { reads, writes } => reads + writes != 0,
-        }
-    }
-
-    pub fn is_active(&self) -> bool {
-        !self.guards.lock().unwrap().is_empty()
-    }
-}
-
-impl fmt::Display for LockInfoInner {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}: {}; avg guard duration: {:?}",
-            self.location,
-            self.accesses.lock().unwrap(),
-            self.avg_duration.lock().unwrap().get_average(),
-        )?;
-
-        for guard in self.guards.lock().unwrap().values() {
-            write!(f, "\n- {}", guard)?;
-        }
-
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum LockKind {
-    Mutex,
-    RwLock,
-}
-
-pub struct LockGuard<T> {
-    pub(crate) guard: T,
-    details: GuardDetails,
 }
 
 #[derive(Debug, Clone)]

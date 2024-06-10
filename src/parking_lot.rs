@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use parking_lot::{MutexGuard, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::lock_info::{GuardKind, LockGuard, LockInfo, LockKind};
@@ -5,25 +7,25 @@ use crate::lock_info::{GuardKind, LockGuard, LockInfo, LockKind};
 #[derive(Debug)]
 pub struct Mutex<T> {
     lock: parking_lot::Mutex<T>,
-    info: LockInfo,
+    location: Arc<str>,
 }
 
 impl<T> Mutex<T> {
     pub fn new(item: T) -> Self {
         Self {
             lock: parking_lot::Mutex::new(item),
-            info: LockInfo::new(LockKind::Mutex),
+            location: LockInfo::register(LockKind::Mutex),
         }
     }
 
     pub fn lock(&self) -> LockGuard<MutexGuard<'_, T>> {
         let guard = self.lock.lock();
-        self.info.guard(guard, GuardKind::Lock)
+        LockGuard::new(guard, GuardKind::Lock, &self.location)
     }
 
     pub fn try_lock(&self) -> Option<LockGuard<MutexGuard<'_, T>>> {
         let guard = self.lock.try_lock()?;
-        Some(self.info.guard(guard, GuardKind::Lock))
+        Some(LockGuard::new(guard, GuardKind::Lock, &self.location))
     }
 }
 
@@ -31,7 +33,7 @@ impl<T: Default> Default for Mutex<T> {
     fn default() -> Self {
         Self {
             lock: Default::default(),
-            info: LockInfo::new(LockKind::Mutex),
+            location: LockInfo::register(LockKind::Mutex),
         }
     }
 }
@@ -39,25 +41,25 @@ impl<T: Default> Default for Mutex<T> {
 #[derive(Debug)]
 pub struct RwLock<T> {
     lock: parking_lot::RwLock<T>,
-    info: LockInfo,
+    location: Arc<str>,
 }
 
 impl<T> RwLock<T> {
     pub fn new(item: T) -> Self {
         Self {
             lock: parking_lot::RwLock::new(item),
-            info: LockInfo::new(LockKind::RwLock),
+            location: LockInfo::register(LockKind::RwLock),
         }
     }
 
     pub fn read(&self) -> LockGuard<RwLockReadGuard<'_, T>> {
         let guard = self.lock.read();
-        self.info.guard(guard, GuardKind::Read)
+        LockGuard::new(guard, GuardKind::Read, &self.location)
     }
 
     pub fn write(&self) -> LockGuard<RwLockWriteGuard<'_, T>> {
         let guard = self.lock.write();
-        self.info.guard(guard, GuardKind::Write)
+        LockGuard::new(guard, GuardKind::Write, &self.location)
     }
 
     pub fn into_inner(self) -> T {
@@ -69,7 +71,7 @@ impl<T: Default> Default for RwLock<T> {
     fn default() -> Self {
         Self {
             lock: Default::default(),
-            info: LockInfo::new(LockKind::RwLock),
+            location: LockInfo::register(LockKind::RwLock),
         }
     }
 }
