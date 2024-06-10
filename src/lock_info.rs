@@ -108,7 +108,8 @@ pub enum LockKind {
 
 pub struct LockGuard<T> {
     pub(crate) guard: T,
-    details: GuardDetails,
+    lock_location: Arc<str>,
+    acquire_time: Instant,
 }
 
 impl<T> LockGuard<T> {
@@ -119,7 +120,6 @@ impl<T> LockGuard<T> {
 
         let details = GuardDetails {
             guard_kind,
-            lock_location: lock_location.clone(),
             acquire_location,
             acquire_time,
         };
@@ -133,7 +133,7 @@ impl<T> LockGuard<T> {
             info.guards
                 .lock()
                 .unwrap()
-                .insert(details.acquire_time, details.clone());
+                .insert(details.acquire_time, details);
 
             let accesses = &mut *info.accesses.lock().unwrap();
             match guard_kind {
@@ -161,14 +161,17 @@ impl<T> LockGuard<T> {
             }
         }
 
-        LockGuard { guard, details }
+        LockGuard {
+            guard,
+            lock_location: lock_location.clone(),
+            acquire_time,
+        }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct GuardDetails {
     guard_kind: GuardKind,
-    lock_location: Arc<str>,
     acquire_location: Arc<str>,
     acquire_time: Instant,
 }
@@ -208,22 +211,24 @@ impl<T> Drop for LockGuard<T> {
             .unwrap()
             .read()
             .unwrap()
-            .get(&self.details.lock_location)
+            .get(&self.lock_location)
         {
-            let duration = timestamp - self.details.acquire_time;
+            let duration = timestamp - self.acquire_time;
 
-            info.guards
+            let details = info
+                .guards
                 .lock()
                 .unwrap()
-                .remove(&self.details.acquire_time);
+                .remove(&self.acquire_time)
+                .unwrap();
 
             info.avg_duration.lock().unwrap().add_sample(duration);
 
             trace!(
                 "The {:?} guard for lock {} acquired at {} was dropped after {:?}",
-                self.details.guard_kind,
-                self.details.lock_location,
-                self.details.acquire_location,
+                details.guard_kind,
+                self.lock_location,
+                details.acquire_location,
                 duration,
             );
         }
