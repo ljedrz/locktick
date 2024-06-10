@@ -45,7 +45,8 @@ pub struct LockInfo(Arc<LockInfoInner>);
 pub struct LockInfoInner {
     kind: LockKind,
     pub(crate) location: Arc<str>,
-    pub(crate) details: Mutex<(LockState, Accesses)>,
+    pub(crate) accesses: Mutex<Accesses>,
+    pub(crate) guards: Mutex<HashMap<Instant, GuardDetails>>,
     avg_duration: Mutex<NoSumSMA<Duration, u32, 20>>,
 }
 
@@ -71,7 +72,8 @@ impl LockInfo {
                 let info = Self(Arc::new(LockInfoInner {
                     kind,
                     location,
-                    details: Mutex::new((LockState::Locked, Accesses::new(kind))),
+                    accesses: Mutex::new(Accesses::new(kind)),
+                    guards: Default::default(),
                     avg_duration: Mutex::new(NoSumSMA::from_zero(Duration::ZERO)),
                 }));
 
@@ -84,24 +86,36 @@ impl LockInfo {
 }
 
 impl LockInfoInner {
-    pub(crate) fn guard<T>(&self, actual_guard: T, guard_kind: GuardKind) -> LockGuard<T> {
+    pub(crate) fn guard<T>(&self, guard: T, guard_kind: GuardKind) -> LockGuard<T> {
+        let acquire_location = call_location();
+        let acquire_time = Instant::now();
+        trace!(
+            "Acquiring a {:?} guard at {:?}",
+            guard_kind,
+            acquire_location
+        );
+
+        let details = GuardDetails {
+            guard_kind,
+            lock_location: self.location.clone(),
+            acquire_location,
+            acquire_time,
+        };
+
         if let Some(info) = LOCK_INFOS
             .get_or_init(Default::default) // TODO: check if this is really needed
             .read()
             .unwrap()
             .get(&self.location)
         {
-            let (curr_state, accesses) = &mut *info.details.lock().unwrap();
+            info.guards
+                .lock()
+                .unwrap()
+                .insert(details.acquire_time, details.clone());
+            let accesses = &mut *info.accesses.lock().unwrap();
 
             match guard_kind {
                 GuardKind::Lock => {
-                    match curr_state {
-                        LockState::Locked => {
-                            *curr_state = LockState::Unlocked;
-                        }
-                        _ => unreachable!(),
-                    }
-
                     if let Accesses::Mutex(unlocks) = accesses {
                         *unlocks += 1;
                     } else {
@@ -109,15 +123,6 @@ impl LockInfoInner {
                     }
                 }
                 GuardKind::Read => {
-                    match curr_state {
-                        LockState::Reading(num_readers) => {
-                            *num_readers += 1;
-                        }
-                        curr_state => {
-                            *curr_state = LockState::Reading(1);
-                        }
-                    }
-
                     if let Accesses::RwLock { reads, writes: _ } = accesses {
                         *reads += 1;
                     } else {
@@ -125,13 +130,6 @@ impl LockInfoInner {
                     }
                 }
                 GuardKind::Write => {
-                    match curr_state {
-                        LockState::Locked => {
-                            *curr_state = LockState::Writing;
-                        }
-                        _ => unreachable!(),
-                    }
-
                     if let Accesses::RwLock { reads: _, writes } = accesses {
                         *writes += 1;
                     } else {
@@ -141,12 +139,12 @@ impl LockInfoInner {
             }
         }
 
-        LockGuard::new(actual_guard, self.location.clone(), guard_kind)
+        LockGuard { guard, details }
     }
 
     pub fn was_used(&self) -> bool {
-        match self.details.lock().unwrap().1 {
-            Accesses::Mutex(n) => n != 0,
+        match &*self.accesses.lock().unwrap() {
+            Accesses::Mutex(n) => *n != 0,
             Accesses::RwLock { reads, writes } => reads + writes != 0,
         }
     }
@@ -154,13 +152,13 @@ impl LockInfoInner {
 
 impl fmt::Display for LockInfoInner {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let (state, accesses) = &*self.details.lock().unwrap();
+        let accesses = &*self.accesses.lock().unwrap();
         write!(
             f,
             "{:?} {:?}: {:?}; {}; avg: {:?}",
             self.kind,
             self.location,
-            state,
+            self.guards.lock().unwrap(),
             accesses,
             self.avg_duration.lock().unwrap().get_average(),
         )
@@ -173,34 +171,27 @@ pub enum LockKind {
     RwLock,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum LockState {
-    Locked,
-    Unlocked,
-    Reading(usize),
-    Writing,
+pub struct LockGuard<T> {
+    pub(crate) guard: T,
+    details: GuardDetails,
 }
 
-pub struct LockGuard<T> {
-    pub(crate) lock: T,
-    kind: GuardKind,
+#[derive(Clone)]
+pub struct GuardDetails {
+    guard_kind: GuardKind,
     lock_location: Arc<str>,
     acquire_location: Arc<str>,
     acquire_time: Instant,
 }
 
-impl<T> LockGuard<T> {
-    pub(crate) fn new(lock: T, lock_location: Arc<str>, kind: GuardKind) -> Self {
-        let acquire_location = call_location();
-        trace!("Acquiring a {:?} guard at {:?}", kind, acquire_location);
-
-        Self {
-            lock,
-            kind,
-            lock_location,
-            acquire_location,
-            acquire_time: Instant::now(),
-        }
+impl fmt::Debug for GuardDetails {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("GuardDetails")
+            .field("guard_kind", &self.guard_kind)
+            // .field("lock_location", &self.lock_location)
+            .field("acquire_location", &self.acquire_location)
+            .field("acquire_time", &self.acquire_time)
+            .finish()
     }
 }
 
@@ -208,13 +199,13 @@ impl<T: Deref> Deref for LockGuard<T> {
     type Target = T::Target;
 
     fn deref(&self) -> &Self::Target {
-        self.lock.deref()
+        self.guard.deref()
     }
 }
 
 impl<T: DerefMut> DerefMut for LockGuard<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.lock.deref_mut()
+        self.guard.deref_mut()
     }
 }
 
@@ -227,28 +218,23 @@ impl<T> Drop for LockGuard<T> {
             .unwrap()
             .read()
             .unwrap()
-            .get(&self.lock_location)
+            .get(&self.details.lock_location)
         {
-            let duration = timestamp - self.acquire_time;
+            let duration = timestamp - self.details.acquire_time;
 
-            // TODO: considering providing info on number of current readers
-            match &mut info.details.lock().unwrap().0 {
-                LockState::Reading(num_readers) if *num_readers > 1 => {
-                    *num_readers -= 1;
-                }
-                curr_state => {
-                    *curr_state = LockState::Locked;
-                }
-            }
+            info.guards
+                .lock()
+                .unwrap()
+                .remove(&self.details.acquire_time);
 
             let mut avg_duration = info.avg_duration.lock().unwrap();
             avg_duration.add_sample(duration);
 
             trace!(
                 "The {:?} guard for lock {:?} acquired at {:?} was dropped after {:?} (avg: {:?})",
-                self.kind,
-                self.lock_location,
-                self.acquire_location,
+                self.details.guard_kind,
+                self.details.lock_location,
+                self.details.acquire_location,
                 duration,
                 avg_duration.get_average(),
             );
