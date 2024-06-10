@@ -16,14 +16,13 @@ fn call_location() -> Arc<str> {
     let symbol = frames
         .iter()
         .flat_map(|frame| frame.symbols())
-        .filter(|symbol| {
+        .find(|symbol| {
             if let Some(filename) = symbol.filename().and_then(|path| path.to_str()) {
                 !filename.contains("locktick") && !filename.contains("rustc")
             } else {
                 false
             }
         })
-        .next()
         .unwrap();
 
     let filename = symbol.filename().unwrap().to_str().unwrap();
@@ -43,7 +42,6 @@ pub struct LockInfo(Arc<LockInfoInner>);
 
 #[derive(Debug)]
 pub struct LockInfoInner {
-    kind: LockKind,
     pub(crate) location: Arc<str>,
     pub(crate) accesses: Mutex<Accesses>,
     pub(crate) guards: Mutex<HashMap<Instant, GuardDetails>>,
@@ -70,7 +68,6 @@ impl LockInfo {
         {
             Entry::Vacant(entry) => {
                 let info = Self(Arc::new(LockInfoInner {
-                    kind,
                     location,
                     accesses: Mutex::new(Accesses::new(kind)),
                     guards: Default::default(),
