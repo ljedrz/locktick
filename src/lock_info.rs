@@ -37,6 +37,8 @@ fn call_location() -> Arc<str> {
 
 pub static LOCK_INFOS: OnceLock<RwLock<HashMap<Arc<str>, LockInfo>>> = OnceLock::new();
 
+/// This object contains all the details related to a given lock, and it can only
+/// be found in the `LOCK_INFOS` static.
 #[derive(Debug)]
 pub struct LockInfo {
     pub(crate) location: Arc<str>,
@@ -100,12 +102,16 @@ impl fmt::Display for LockInfo {
     }
 }
 
+/// The type of the lock; either a `Mutex` or an `RwLock`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LockKind {
     Mutex,
     RwLock,
 }
 
+/// A wrapper for the lock guard produced when working with the lock. It
+/// only contains the guard itself and metadata that allows it to be uniquely
+/// identified in the `LOCK_INFOS` static.
 pub struct LockGuard<T> {
     pub(crate) guard: T,
     lock_location: Arc<str>,
@@ -169,11 +175,13 @@ impl<T> LockGuard<T> {
     }
 }
 
+/// Guard-related information which - when paired with the corresponding
+/// `LockGuard` - provides a full set of data related to a single guard.
 #[derive(Debug)]
 pub struct GuardDetails {
     guard_kind: GuardKind,
     acquire_location: Arc<str>,
-    acquire_time: Instant,
+    acquire_time: Instant, // duplicated for fmt::Debug purposes
 }
 
 impl fmt::Display for GuardDetails {
@@ -235,6 +243,7 @@ impl<T> Drop for LockGuard<T> {
     }
 }
 
+/// The type of the guard that was created when working with a lock.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum GuardKind {
     Lock,
@@ -242,6 +251,8 @@ pub enum GuardKind {
     Write,
 }
 
+/// Contains information on how many times the lock was accessed; for `RwLock`
+/// it is broken down into reads and writes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Accesses {
     Mutex(usize),
