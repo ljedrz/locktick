@@ -156,16 +156,19 @@ impl LockInfoInner {
 
 impl fmt::Display for LockInfoInner {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let accesses = &*self.accesses.lock().unwrap();
         write!(
             f,
-            "{:?} {:?}: {:?}; {}; avg: {:?}",
-            self.kind,
+            "{}: {}; avg guard duration: {:?}",
             self.location,
-            self.guards.lock().unwrap(),
-            accesses,
+            self.accesses.lock().unwrap(),
             self.avg_duration.lock().unwrap().get_average(),
-        )
+        )?;
+
+        for guard in self.guards.lock().unwrap().values() {
+            write!(f, "- {}", guard)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -180,7 +183,7 @@ pub struct LockGuard<T> {
     details: GuardDetails,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct GuardDetails {
     guard_kind: GuardKind,
     lock_location: Arc<str>,
@@ -188,14 +191,15 @@ pub struct GuardDetails {
     acquire_time: Instant,
 }
 
-impl fmt::Debug for GuardDetails {
+impl fmt::Display for GuardDetails {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("GuardDetails")
-            .field("guard_kind", &self.guard_kind)
-            // .field("lock_location", &self.lock_location)
-            .field("acquire_location", &self.acquire_location)
-            .field("acquire_time", &self.acquire_time)
-            .finish()
+        write!(
+            f,
+            "{:?} guard acquired {:?} ago at {}",
+            self.guard_kind,
+            Instant::now() - self.acquire_time,
+            self.acquire_location,
+        )
     }
 }
 
