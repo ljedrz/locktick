@@ -118,17 +118,6 @@ impl LockInfo {
             Entry::Occupied(entry) => entry.get().location.clone(),
         }
     }
-
-    pub fn was_used(&self) -> bool {
-        match &*self.accesses.lock().unwrap() {
-            Accesses::Mutex(n) => *n != 0,
-            Accesses::RwLock { reads, writes } => reads + writes != 0,
-        }
-    }
-
-    pub fn is_active(&self) -> bool {
-        !self.guards.lock().unwrap().is_empty()
-    }
 }
 
 impl fmt::Display for LockInfo {
@@ -304,6 +293,15 @@ pub enum GuardKind {
 pub enum Accesses {
     Mutex(usize),
     RwLock { reads: usize, writes: usize },
+}
+
+impl Accesses {
+    pub fn was_used(&self) -> bool {
+        match self {
+            Accesses::Mutex(n) => *n != 0,
+            Accesses::RwLock { reads, writes } => reads + writes != 0,
+        }
+    }
 }
 
 impl Ord for Accesses {
