@@ -148,6 +148,10 @@ impl LockInfoInner {
             Accesses::RwLock { reads, writes } => reads + writes != 0,
         }
     }
+
+    pub fn is_active(&self) -> bool {
+        !self.guards.lock().unwrap().is_empty()
+    }
 }
 
 impl fmt::Display for LockInfoInner {
