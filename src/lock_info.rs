@@ -278,7 +278,7 @@ impl Accesses {
 impl Ord for Accesses {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
         match (self, other) {
-            (Self::Mutex(a), Self::Mutex(b)) => a.cmp(b),
+            (Self::Mutex(u1), Self::Mutex(u2)) => u1.cmp(u2),
             (
                 Self::RwLock {
                     reads: r1,
@@ -288,21 +288,21 @@ impl Ord for Accesses {
                     reads: r2,
                     writes: w2,
                 },
-            ) => {
-                if w1.cmp(w2) != cmp::Ordering::Equal {
-                    w1.cmp(w2)
-                } else {
-                    r1.cmp(r2)
-                }
-            }
+            ) => (r1 + w1).cmp(&(r2 + w2)),
             (
-                Self::Mutex(_),
+                Self::Mutex(u),
                 Self::RwLock {
-                    reads: _,
-                    writes: _,
+                    reads: r,
+                    writes: w,
                 },
-            ) => cmp::Ordering::Greater,
-            _ => cmp::Ordering::Less,
+            ) => u.cmp(&(r + w)),
+            (
+                Self::RwLock {
+                    reads: r,
+                    writes: w,
+                },
+                Self::Mutex(u),
+            ) => (r + w).cmp(u),
         }
     }
 }
