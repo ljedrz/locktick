@@ -82,7 +82,8 @@ mod tests {
 
     use crate::{lock_info::*, parking_lot::*};
 
-    fn lock_infos() -> std::sync::RwLockReadGuard<'static, HashMap<Arc<str>, LockInfo>> {
+    fn lock_infos(
+    ) -> std::sync::RwLockReadGuard<'static, HashMap<Arc<str>, std::sync::Mutex<LockInfo>>> {
         LOCK_INFOS.get().unwrap().read().unwrap()
     }
 
@@ -96,15 +97,15 @@ mod tests {
             assert_eq!(read1.lock_location, lock.location);
             let infos = lock_infos();
             assert_eq!(infos.len(), 1);
-            let info = infos.values().next().unwrap();
+            let info = infos.values().next().unwrap().lock().unwrap();
             assert_eq!(
-                *info.accesses.lock().unwrap(),
+                info.accesses,
                 Accesses::RwLock {
                     reads: 1,
                     writes: 0
                 }
             );
-            let guards = info.guards.lock().unwrap();
+            let guards = &info.guards;
             assert_eq!(guards.len(), 1);
             let _guard = guards.get(&read1.id).unwrap();
             // assert_ne!(guard.acquire_location, lock.location);
@@ -115,15 +116,15 @@ mod tests {
             assert_eq!(read2.lock_location, lock.location);
             let infos = lock_infos();
             assert_eq!(infos.len(), 1);
-            let info = infos.values().next().unwrap();
+            let info = infos.values().next().unwrap().lock().unwrap();
             assert_eq!(
-                *info.accesses.lock().unwrap(),
+                info.accesses,
                 Accesses::RwLock {
                     reads: 2,
                     writes: 0
                 }
             );
-            let guards = info.guards.lock().unwrap();
+            let guards = &info.guards;
             assert_eq!(guards.len(), 2);
             let _guard = guards.get(&read1.id).unwrap();
             // assert_ne!(guard.acquire_location, lock.location);
@@ -133,15 +134,15 @@ mod tests {
         {
             let infos = lock_infos();
             assert_eq!(infos.len(), 1);
-            let info = infos.values().next().unwrap();
+            let info = infos.values().next().unwrap().lock().unwrap();
             assert_eq!(
-                *info.accesses.lock().unwrap(),
+                info.accesses,
                 Accesses::RwLock {
                     reads: 2,
                     writes: 0
                 }
             );
-            let guards = info.guards.lock().unwrap();
+            let guards = &info.guards;
             assert_eq!(guards.len(), 1);
         }
 
@@ -149,15 +150,15 @@ mod tests {
         {
             let infos = lock_infos();
             assert_eq!(infos.len(), 1);
-            let info = infos.values().next().unwrap();
+            let info = infos.values().next().unwrap().lock().unwrap();
             assert_eq!(
-                *info.accesses.lock().unwrap(),
+                info.accesses,
                 Accesses::RwLock {
                     reads: 2,
                     writes: 0
                 }
             );
-            let guards = info.guards.lock().unwrap();
+            let guards = &info.guards;
             assert_eq!(guards.len(), 0);
         }
 
@@ -166,15 +167,15 @@ mod tests {
             assert_eq!(write.lock_location, lock.location);
             let infos = lock_infos();
             assert_eq!(infos.len(), 1);
-            let info = infos.values().next().unwrap();
+            let info = infos.values().next().unwrap().lock().unwrap();
             assert_eq!(
-                *info.accesses.lock().unwrap(),
+                info.accesses,
                 Accesses::RwLock {
                     reads: 2,
                     writes: 1
                 }
             );
-            let guards = info.guards.lock().unwrap();
+            let guards = &info.guards;
             assert_eq!(guards.len(), 1);
             let _guard = guards.get(&write.id).unwrap();
             // assert_ne!(guard.acquire_location, lock.location);
@@ -184,15 +185,15 @@ mod tests {
         {
             let infos = lock_infos();
             assert_eq!(infos.len(), 1);
-            let info = infos.values().next().unwrap();
+            let info = infos.values().next().unwrap().lock().unwrap();
             assert_eq!(
-                *info.accesses.lock().unwrap(),
+                info.accesses,
                 Accesses::RwLock {
                     reads: 2,
                     writes: 1
                 }
             );
-            let guards = info.guards.lock().unwrap();
+            let guards = &info.guards;
             assert_eq!(guards.len(), 0);
         }
     }

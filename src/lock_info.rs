@@ -41,7 +41,7 @@ fn call_location() -> Arc<str> {
     .into()
 }
 
-pub static LOCK_INFOS: OnceLock<RwLock<HashMap<Arc<str>, LockInfo>>> = OnceLock::new();
+pub static LOCK_INFOS: OnceLock<RwLock<HashMap<Arc<str>, Mutex<LockInfo>>>> = OnceLock::new();
 
 pub fn lock_snapshots() -> Vec<LockSnapshot> {
     let mut snapshots = LOCK_INFOS
@@ -49,7 +49,7 @@ pub fn lock_snapshots() -> Vec<LockSnapshot> {
         .read()
         .unwrap()
         .values()
-        .map(LockSnapshot::from)
+        .map(|info| LockSnapshot::from(&*info.lock().unwrap()))
         .collect::<Vec<_>>();
     snapshots.sort_unstable_by_key(|s| s.accesses);
 
@@ -61,10 +61,10 @@ pub fn lock_snapshots() -> Vec<LockSnapshot> {
 #[derive(Debug)]
 pub struct LockInfo {
     pub(crate) location: Arc<str>,
-    pub(crate) accesses: Mutex<Accesses>,
-    pub(crate) rng: Mutex<XorShiftRng>,
-    pub(crate) guards: Mutex<HashMap<u64, GuardDetails>>,
-    avg_duration: Mutex<NoSumSMA<Duration, u32, 20>>,
+    pub(crate) accesses: Accesses,
+    pub(crate) rng: XorShiftRng,
+    pub(crate) guards: HashMap<u64, GuardDetails>,
+    avg_duration: NoSumSMA<Duration, u32, 20>,
 }
 
 impl LockInfo {
@@ -78,18 +78,18 @@ impl LockInfo {
             .entry(location.clone())
         {
             Entry::Vacant(entry) => {
-                let info = Self {
+                let info = Mutex::new(Self {
                     location: location.clone(),
-                    accesses: Mutex::new(Accesses::new(kind)),
-                    rng: Mutex::new(XorShiftRng::seed_from_u64(0)),
+                    accesses: Accesses::new(kind),
+                    rng: XorShiftRng::seed_from_u64(0),
                     guards: Default::default(),
-                    avg_duration: Mutex::new(NoSumSMA::from_zero(Duration::ZERO)),
-                };
+                    avg_duration: NoSumSMA::from_zero(Duration::ZERO),
+                });
 
                 entry.insert(info);
                 location
             }
-            Entry::Occupied(entry) => entry.get().location.clone(),
+            Entry::Occupied(entry) => entry.get().lock().unwrap().location.clone(),
         }
     }
 }
@@ -105,21 +105,15 @@ pub struct LockSnapshot {
 impl From<&LockInfo> for LockSnapshot {
     fn from(info: &LockInfo) -> Self {
         let timestamp = Instant::now();
-        let mut guards = info
-            .guards
-            .lock()
-            .unwrap()
-            .values()
-            .cloned()
-            .collect::<Vec<_>>();
+        let mut guards = info.guards.values().cloned().collect::<Vec<_>>();
         guards.sort_unstable_by_key(|g| g.acquire_time);
 
         Self {
             timestamp,
             location: info.location.clone(),
-            accesses: *info.accesses.lock().unwrap(),
+            accesses: info.accesses,
             guards,
-            avg_duration: info.avg_duration.lock().unwrap().get_average(),
+            avg_duration: info.avg_duration.get_average(),
         }
     }
 }
@@ -174,10 +168,11 @@ impl<T> LockGuard<T> {
             .unwrap()
             .get(lock_location)
         {
-            let id = info.rng.lock().unwrap().next_u64();
-            info.guards.lock().unwrap().insert(id, details);
+            let mut info = info.lock().unwrap();
+            let id = info.rng.next_u64();
+            info.guards.insert(id, details);
 
-            let accesses = &mut *info.accesses.lock().unwrap();
+            let accesses = &mut info.accesses;
             match guard_kind {
                 GuardKind::Lock => {
                     if let Accesses::Mutex(unlocks) = accesses {
@@ -261,9 +256,10 @@ impl<T> Drop for LockGuard<T> {
             .unwrap()
             .get(&self.lock_location)
         {
-            let details = info.guards.lock().unwrap().remove(&self.id).unwrap();
+            let mut info = info.lock().unwrap();
+            let details = info.guards.remove(&self.id).unwrap();
             let duration = timestamp - details.acquire_time;
-            info.avg_duration.lock().unwrap().add_sample(duration);
+            info.avg_duration.add_sample(duration);
 
             trace!(
                 "The {:?} guard for lock {} acquired at {} was dropped after {:?}",
