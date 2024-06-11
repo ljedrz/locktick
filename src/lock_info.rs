@@ -12,8 +12,10 @@ use rand_xorshift::XorShiftRng;
 use simple_moving_average::{SingleSumSMA, SMA};
 use tracing::trace;
 
+// Contains data on all created locks and their guards.
 static LOCK_INFOS: OnceLock<RwLock<HashMap<Location, Mutex<LockInfo>>>> = OnceLock::new();
 
+/// Points to the filesystem location where a lock or guard was created.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Location {
     pub path: Arc<Path>,
@@ -27,6 +29,7 @@ impl fmt::Display for Location {
     }
 }
 
+// Provides the means to procure the location of a lock or its guard.
 fn call_location() -> Location {
     let backtrace = backtrace::Backtrace::new();
     let frames = backtrace.frames();
@@ -54,20 +57,19 @@ fn call_location() -> Location {
     }
 }
 
+/// Returns a vector containing snapshots of the data related to all the locks.
 pub fn lock_snapshots() -> Vec<LockInfo> {
-    let snapshots = LOCK_INFOS
+    LOCK_INFOS
         .get_or_init(Default::default)
         .read()
         .unwrap()
         .values()
         .map(|info| info.lock().unwrap().clone())
-        .collect::<Vec<_>>();
-
-    snapshots
+        .collect()
 }
 
-/// This object contains all the details related to a given lock, and it can only
-/// be found in the `LOCK_INFOS` static.
+/// Contains all the details related to a given lock, and it can only
+/// be obtained through a call to `lock_snapshots`.
 #[derive(Debug, Clone)]
 pub struct LockInfo {
     pub kind: LockKind,
@@ -77,6 +79,8 @@ pub struct LockInfo {
 }
 
 impl LockInfo {
+    /// Registers the creation of a lock; this is meant to be called
+    /// when creating wrapper objects for different kinds of locks.
     pub(crate) fn register(kind: LockKind) -> Location {
         let location = call_location();
 
@@ -121,9 +125,9 @@ pub enum LockKind {
     RwLock,
 }
 
-/// A wrapper for the lock guard produced when working with the lock. It
-/// only contains the guard itself and metadata that allows it to be uniquely
-/// identified in the `LOCK_INFOS` static.
+/// A wrapper for the lock guard produced when working with a lock. It
+/// only contains the guard itself and metadata that allows it to be
+/// distinguished from other guards belonging to a single lock.
 pub struct LockGuard<T> {
     guard: T,
     pub lock_location: Location,
@@ -132,6 +136,8 @@ pub struct LockGuard<T> {
 }
 
 impl<T> LockGuard<T> {
+    /// Registers the creation of a guard and returns it wrapped in an object
+    /// used to perform relevant accounting when the guard is dropped.
     pub(crate) fn new(guard: T, guard_kind: GuardKind, lock_location: &Location) -> Self {
         let acquire_time = Instant::now();
         let guard_location = call_location();
@@ -167,8 +173,7 @@ impl<T> LockGuard<T> {
     }
 }
 
-/// Guard-related information which - when paired with the corresponding
-/// `LockGuard` - provides a full set of data related to a single guard.
+/// Contains data and statistics related to a single guard.
 #[derive(Debug, Clone)]
 pub struct GuardInfo {
     pub kind: GuardKind,
@@ -189,10 +194,15 @@ impl GuardInfo {
         }
     }
 
+    /// Returns the number of current uses of the guard. It can
+    /// be greater than `1` only in case of a read guard, and `0`
+    /// indicates that the guard is currently inactive.
     pub fn num_active_uses(&self) -> usize {
         self.active_uses.len()
     }
 
+    /// Returns the average duration of the guard. It is a moving
+    /// average that gets updated with each use.
     pub fn avg_duration(&self) -> Duration {
         self.avg_duration.get_average()
     }
