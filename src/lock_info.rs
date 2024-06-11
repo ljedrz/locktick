@@ -21,8 +21,8 @@ fn call_location() -> Arc<str> {
         .flat_map(|frame| frame.symbols())
         .find(|symbol| {
             if let Some(filename) = symbol.filename().and_then(|path| path.to_str()) {
-                if cfg!(test) {
-                    filename.contains("locktick")
+                if cfg!(feature = "test") {
+                    filename.contains("tests")
                 } else {
                     !filename.contains("locktick") && !filename.contains("rustc")
                 }
@@ -114,8 +114,8 @@ pub enum LockKind {
 /// identified in the `LOCK_INFOS` static.
 pub struct LockGuard<T> {
     guard: T,
-    lock_location: Arc<str>,
-    guard_location: Arc<str>,
+    pub lock_location: Arc<str>,
+    pub guard_location: Arc<str>,
     id: u64,
 }
 
