@@ -43,13 +43,13 @@ fn call_location() -> Arc<str> {
 
 pub static LOCK_INFOS: OnceLock<RwLock<HashMap<Arc<str>, Mutex<LockInfo>>>> = OnceLock::new();
 
-pub fn lock_snapshots() -> Vec<LockSnapshot> {
+pub fn lock_snapshots() -> Vec<LockInfo> {
     let mut snapshots = LOCK_INFOS
         .get_or_init(Default::default)
         .read()
         .unwrap()
         .values()
-        .map(|info| LockSnapshot::from(&*info.lock().unwrap()))
+        .map(|info| info.lock().unwrap().clone())
         .collect::<Vec<_>>();
     snapshots.sort_unstable_by_key(|s| s.accesses);
 
@@ -58,7 +58,7 @@ pub fn lock_snapshots() -> Vec<LockSnapshot> {
 
 /// This object contains all the details related to a given lock, and it can only
 /// be found in the `LOCK_INFOS` static.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LockInfo {
     pub(crate) location: Arc<str>,
     pub(crate) accesses: Accesses,
@@ -94,31 +94,7 @@ impl LockInfo {
     }
 }
 
-pub struct LockSnapshot {
-    pub timestamp: Instant,
-    pub location: Arc<str>,
-    pub accesses: Accesses,
-    pub guards: Vec<GuardDetails>,
-    pub avg_duration: Duration,
-}
-
-impl From<&LockInfo> for LockSnapshot {
-    fn from(info: &LockInfo) -> Self {
-        let timestamp = Instant::now();
-        let mut guards = info.guards.values().cloned().collect::<Vec<_>>();
-        guards.sort_unstable_by_key(|g| g.acquire_time);
-
-        Self {
-            timestamp,
-            location: info.location.clone(),
-            accesses: info.accesses,
-            guards,
-            avg_duration: info.avg_duration.get_average(),
-        }
-    }
-}
-
-impl fmt::Display for LockSnapshot {
+impl fmt::Display for LockInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -126,7 +102,7 @@ impl fmt::Display for LockSnapshot {
             self.location, self.accesses, self.avg_duration,
         )?;
 
-        for guard in &self.guards {
+        for guard in self.guards.values() {
             write!(f, "\n- {}", guard)?;
         }
 
