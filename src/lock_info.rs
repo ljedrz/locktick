@@ -7,6 +7,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+use rand_core::{RngCore, SeedableRng};
+use rand_xorshift::XorShiftRng;
 use simple_moving_average::{NoSumSMA, SMA};
 use tracing::trace;
 
@@ -60,7 +62,8 @@ pub fn lock_snapshots() -> Vec<LockSnapshot> {
 pub struct LockInfo {
     pub(crate) location: Arc<str>,
     pub(crate) accesses: Mutex<Accesses>,
-    pub(crate) guards: Mutex<HashMap<Instant, GuardDetails>>,
+    pub(crate) rng: Mutex<XorShiftRng>,
+    pub(crate) guards: Mutex<HashMap<u64, GuardDetails>>,
     avg_duration: Mutex<NoSumSMA<Duration, u32, 20>>,
 }
 
@@ -78,6 +81,7 @@ impl LockInfo {
                 let info = Self {
                     location: location.clone(),
                     accesses: Mutex::new(Accesses::new(kind)),
+                    rng: Mutex::new(XorShiftRng::seed_from_u64(0)),
                     guards: Default::default(),
                     avg_duration: Mutex::new(NoSumSMA::from_zero(Duration::ZERO)),
                 };
@@ -149,7 +153,7 @@ pub enum LockKind {
 pub struct LockGuard<T> {
     pub(crate) guard: T,
     pub lock_location: Arc<str>,
-    pub acquire_time: Instant,
+    pub id: u64,
 }
 
 impl<T> LockGuard<T> {
@@ -164,16 +168,14 @@ impl<T> LockGuard<T> {
             acquire_time,
         };
 
-        if let Some(info) = LOCK_INFOS
+        let id = if let Some(info) = LOCK_INFOS
             .get_or_init(Default::default) // TODO: check if this is really needed
             .read()
             .unwrap()
             .get(lock_location)
         {
-            info.guards
-                .lock()
-                .unwrap()
-                .insert(details.acquire_time, details);
+            let id = info.rng.lock().unwrap().next_u64();
+            info.guards.lock().unwrap().insert(id, details);
 
             let accesses = &mut *info.accesses.lock().unwrap();
             match guard_kind {
@@ -199,12 +201,16 @@ impl<T> LockGuard<T> {
                     }
                 }
             }
-        }
+
+            id
+        } else {
+            unreachable!();
+        };
 
         LockGuard {
             guard,
             lock_location: lock_location.clone(),
-            acquire_time,
+            id,
         }
     }
 }
@@ -215,7 +221,7 @@ impl<T> LockGuard<T> {
 pub struct GuardDetails {
     pub guard_kind: GuardKind,
     pub acquire_location: Arc<str>,
-    acquire_time: Instant, // duplicated for fmt::Display purposes
+    acquire_time: Instant,
 }
 
 impl fmt::Display for GuardDetails {
@@ -255,15 +261,8 @@ impl<T> Drop for LockGuard<T> {
             .unwrap()
             .get(&self.lock_location)
         {
-            let duration = timestamp - self.acquire_time;
-
-            let details = info
-                .guards
-                .lock()
-                .unwrap()
-                .remove(&self.acquire_time)
-                .unwrap();
-
+            let details = info.guards.lock().unwrap().remove(&self.id).unwrap();
+            let duration = timestamp - details.acquire_time;
             info.avg_duration.lock().unwrap().add_sample(duration);
 
             trace!(

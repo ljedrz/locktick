@@ -106,7 +106,7 @@ mod tests {
             );
             let guards = info.guards.lock().unwrap();
             assert_eq!(guards.len(), 1);
-            let _guard = guards.get(&read1.acquire_time).unwrap();
+            let _guard = guards.get(&read1.id).unwrap();
             // assert_ne!(guard.acquire_location, lock.location);
         }
 
@@ -125,7 +125,7 @@ mod tests {
             );
             let guards = info.guards.lock().unwrap();
             assert_eq!(guards.len(), 2);
-            let _guard = guards.get(&read1.acquire_time).unwrap();
+            let _guard = guards.get(&read1.id).unwrap();
             // assert_ne!(guard.acquire_location, lock.location);
         }
 
@@ -176,7 +176,7 @@ mod tests {
             );
             let guards = info.guards.lock().unwrap();
             assert_eq!(guards.len(), 1);
-            let _guard = guards.get(&write.acquire_time).unwrap();
+            let _guard = guards.get(&write.id).unwrap();
             // assert_ne!(guard.acquire_location, lock.location);
         }
 
