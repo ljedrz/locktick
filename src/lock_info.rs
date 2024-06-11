@@ -2,6 +2,7 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     fmt,
     ops::{Deref, DerefMut},
+    path::Path,
     sync::{Arc, Mutex, OnceLock, RwLock},
     time::{Duration, Instant},
 };
@@ -11,9 +12,22 @@ use rand_xorshift::XorShiftRng;
 use simple_moving_average::{SingleSumSMA, SMA};
 use tracing::trace;
 
-static LOCK_INFOS: OnceLock<RwLock<HashMap<Arc<str>, Mutex<LockInfo>>>> = OnceLock::new();
+static LOCK_INFOS: OnceLock<RwLock<HashMap<Location, Mutex<LockInfo>>>> = OnceLock::new();
 
-fn call_location() -> Arc<str> {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Location {
+    path: Arc<Path>,
+    line: u32,
+    col: u32,
+}
+
+impl fmt::Display for Location {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}@{}:{}", self.path.display(), self.line, self.col)
+    }
+}
+
+fn call_location() -> Location {
     let backtrace = backtrace::Backtrace::new();
     let frames = backtrace.frames();
     let symbol = frames
@@ -31,15 +45,13 @@ fn call_location() -> Arc<str> {
             }
         })
         .unwrap();
+    let path = symbol.filename().unwrap().into();
 
-    let filename = symbol.filename().unwrap().to_str().unwrap();
-    format!(
-        "{}@{}:{}",
-        filename,
-        symbol.lineno().unwrap(),
-        symbol.colno().unwrap()
-    )
-    .into()
+    Location {
+        path,
+        line: symbol.lineno().unwrap(),
+        col: symbol.colno().unwrap(),
+    }
 }
 
 pub fn lock_snapshots() -> Vec<LockInfo> {
@@ -59,13 +71,13 @@ pub fn lock_snapshots() -> Vec<LockInfo> {
 #[derive(Debug, Clone)]
 pub struct LockInfo {
     pub kind: LockKind,
-    pub location: Arc<str>,
+    pub location: Location,
     rng: XorShiftRng,
-    pub known_guards: HashMap<Arc<str>, GuardInfo>,
+    pub known_guards: HashMap<Location, GuardInfo>,
 }
 
 impl LockInfo {
-    pub fn register(kind: LockKind) -> Arc<str> {
+    pub fn register(kind: LockKind) -> Location {
         let location = call_location();
 
         match LOCK_INFOS
@@ -114,13 +126,13 @@ pub enum LockKind {
 /// identified in the `LOCK_INFOS` static.
 pub struct LockGuard<T> {
     guard: T,
-    pub lock_location: Arc<str>,
-    pub guard_location: Arc<str>,
+    pub lock_location: Location,
+    pub guard_location: Location,
     id: u64,
 }
 
 impl<T> LockGuard<T> {
-    pub(crate) fn new(guard: T, guard_kind: GuardKind, lock_location: &Arc<str>) -> Self {
+    pub(crate) fn new(guard: T, guard_kind: GuardKind, lock_location: &Location) -> Self {
         let acquire_time = Instant::now();
         let guard_location = call_location();
         trace!("Acquiring a {:?} guard at {}", guard_kind, guard_location);
@@ -160,14 +172,14 @@ impl<T> LockGuard<T> {
 #[derive(Debug, Clone)]
 pub struct GuardInfo {
     pub kind: GuardKind,
-    pub location: Arc<str>,
+    pub location: Location,
     pub num_uses: usize,
     pub active_uses: HashMap<u64, Instant>,
     pub avg_duration: SingleSumSMA<Duration, u32, 50>,
 }
 
 impl GuardInfo {
-    fn new(kind: GuardKind, location: Arc<str>) -> Self {
+    fn new(kind: GuardKind, location: Location) -> Self {
         Self {
             kind,
             location,

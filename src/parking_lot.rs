@@ -1,13 +1,11 @@
-use std::sync::Arc;
-
 use parking_lot::{MutexGuard, RwLockReadGuard, RwLockWriteGuard};
 
-use crate::lock_info::{GuardKind, LockGuard, LockInfo, LockKind};
+use crate::lock_info::{GuardKind, Location, LockGuard, LockInfo, LockKind};
 
 #[derive(Debug)]
 pub struct Mutex<T> {
     lock: parking_lot::Mutex<T>,
-    location: Arc<str>,
+    location: Location,
 }
 
 impl<T> Mutex<T> {
@@ -41,7 +39,7 @@ impl<T: Default> Default for Mutex<T> {
 #[derive(Debug)]
 pub struct RwLock<T> {
     lock: parking_lot::RwLock<T>,
-    location: Arc<str>,
+    location: Location,
 }
 
 impl<T> RwLock<T> {
