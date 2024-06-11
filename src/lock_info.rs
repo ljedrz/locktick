@@ -9,8 +9,10 @@ use std::{
 
 use rand_core::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
-use simple_moving_average::{NoSumSMA, SMA};
+use simple_moving_average::{SingleSumSMA, SMA};
 use tracing::trace;
+
+pub static LOCK_INFOS: OnceLock<RwLock<HashMap<Arc<str>, Mutex<LockInfo>>>> = OnceLock::new();
 
 fn call_location() -> Arc<str> {
     let backtrace = backtrace::Backtrace::new();
@@ -41,8 +43,6 @@ fn call_location() -> Arc<str> {
     .into()
 }
 
-pub static LOCK_INFOS: OnceLock<RwLock<HashMap<Arc<str>, Mutex<LockInfo>>>> = OnceLock::new();
-
 pub fn lock_snapshots() -> Vec<LockInfo> {
     let mut snapshots = LOCK_INFOS
         .get_or_init(Default::default)
@@ -64,7 +64,7 @@ pub struct LockInfo {
     pub(crate) accesses: Accesses,
     pub(crate) rng: XorShiftRng,
     pub(crate) guards: HashMap<u64, GuardDetails>,
-    avg_duration: NoSumSMA<Duration, u32, 20>,
+    avg_duration: SingleSumSMA<Duration, u32, 50>,
 }
 
 impl LockInfo {
@@ -83,7 +83,7 @@ impl LockInfo {
                     accesses: Accesses::new(kind),
                     rng: XorShiftRng::seed_from_u64(0),
                     guards: Default::default(),
-                    avg_duration: NoSumSMA::from_zero(Duration::ZERO),
+                    avg_duration: SingleSumSMA::from_zero(Duration::ZERO),
                 });
 
                 entry.insert(info);
