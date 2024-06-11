@@ -16,9 +16,9 @@ static LOCK_INFOS: OnceLock<RwLock<HashMap<Location, Mutex<LockInfo>>>> = OnceLo
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Location {
-    path: Arc<Path>,
-    line: u32,
-    col: u32,
+    pub path: Arc<Path>,
+    pub line: u32,
+    pub col: u32,
 }
 
 impl fmt::Display for Location {

@@ -1,12 +1,12 @@
 use locktick::{lock_info::*, parking_lot::*};
 
-// FIXME: test locations
 #[test]
 fn rwlock() {
     let obj = String::from("derp");
     let lock = RwLock::new(obj);
 
     let read1 = lock.read();
+    assert_eq!(read1.guard_location.line, line!() - 1);
     {
         let infos = lock_snapshots();
         assert_eq!(infos.len(), 1);
@@ -18,6 +18,7 @@ fn rwlock() {
     }
 
     let read2 = lock.read();
+    assert_eq!(read2.guard_location.line, line!() - 1);
     {
         let infos = lock_snapshots();
         assert_eq!(infos.len(), 1);
@@ -54,6 +55,7 @@ fn rwlock() {
     }
 
     let write = lock.write();
+    assert_eq!(write.guard_location.line, line!() - 1);
     {
         let infos = lock_snapshots();
         assert_eq!(infos.len(), 1);
