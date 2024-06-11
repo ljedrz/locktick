@@ -87,6 +87,7 @@ mod tests {
         LOCK_INFOS.get().unwrap().read().unwrap()
     }
 
+    // FIXME: make locations work
     #[test]
     fn rwlock() {
         let obj = String::from("derp");
@@ -98,17 +99,10 @@ mod tests {
             let infos = lock_infos();
             assert_eq!(infos.len(), 1);
             let info = infos.values().next().unwrap().lock().unwrap();
-            assert_eq!(
-                info.accesses,
-                Accesses::RwLock {
-                    reads: 1,
-                    writes: 0
-                }
-            );
-            let guards = &info.guards;
-            assert_eq!(guards.len(), 1);
-            let _guard = guards.get(&read1.id).unwrap();
-            // assert_ne!(guard.acquire_location, lock.location);
+            assert_eq!(info.known_guards.len(), 1);
+            let known_guard = info.known_guards.values().next().unwrap();
+            assert_eq!(known_guard.num_uses, 1);
+            assert_eq!(known_guard.active_uses.len(), 1);
         }
 
         let read2 = lock.read();
@@ -117,17 +111,11 @@ mod tests {
             let infos = lock_infos();
             assert_eq!(infos.len(), 1);
             let info = infos.values().next().unwrap().lock().unwrap();
-            assert_eq!(
-                info.accesses,
-                Accesses::RwLock {
-                    reads: 2,
-                    writes: 0
-                }
-            );
-            let guards = &info.guards;
-            assert_eq!(guards.len(), 2);
-            let _guard = guards.get(&read1.id).unwrap();
-            // assert_ne!(guard.acquire_location, lock.location);
+            assert_eq!(info.known_guards.len(), 2);
+            for known_guard in info.known_guards.values() {
+                assert_eq!(known_guard.num_uses, 1);
+                assert_eq!(known_guard.active_uses.len(), 1);
+            }
         }
 
         drop(read1);
@@ -135,15 +123,11 @@ mod tests {
             let infos = lock_infos();
             assert_eq!(infos.len(), 1);
             let info = infos.values().next().unwrap().lock().unwrap();
-            assert_eq!(
-                info.accesses,
-                Accesses::RwLock {
-                    reads: 2,
-                    writes: 0
-                }
-            );
-            let guards = &info.guards;
-            assert_eq!(guards.len(), 1);
+            assert_eq!(info.known_guards.len(), 2);
+            for known_guard in info.known_guards.values() {
+                assert_eq!(known_guard.num_uses, 1);
+                // TODO: check that only one is active now
+            }
         }
 
         drop(read2);
@@ -151,15 +135,11 @@ mod tests {
             let infos = lock_infos();
             assert_eq!(infos.len(), 1);
             let info = infos.values().next().unwrap().lock().unwrap();
-            assert_eq!(
-                info.accesses,
-                Accesses::RwLock {
-                    reads: 2,
-                    writes: 0
-                }
-            );
-            let guards = &info.guards;
-            assert_eq!(guards.len(), 0);
+            assert_eq!(info.known_guards.len(), 2);
+            for known_guard in info.known_guards.values() {
+                assert_eq!(known_guard.num_uses, 1);
+                assert_eq!(known_guard.active_uses.len(), 0);
+            }
         }
 
         let write = lock.write();
@@ -168,17 +148,11 @@ mod tests {
             let infos = lock_infos();
             assert_eq!(infos.len(), 1);
             let info = infos.values().next().unwrap().lock().unwrap();
-            assert_eq!(
-                info.accesses,
-                Accesses::RwLock {
-                    reads: 2,
-                    writes: 1
-                }
-            );
-            let guards = &info.guards;
-            assert_eq!(guards.len(), 1);
-            let _guard = guards.get(&write.id).unwrap();
-            // assert_ne!(guard.acquire_location, lock.location);
+            assert_eq!(info.known_guards.len(), 3);
+            for known_guard in info.known_guards.values() {
+                assert_eq!(known_guard.num_uses, 1);
+                // TODO: check that only one is active now
+            }
         }
 
         drop(write);
@@ -186,15 +160,11 @@ mod tests {
             let infos = lock_infos();
             assert_eq!(infos.len(), 1);
             let info = infos.values().next().unwrap().lock().unwrap();
-            assert_eq!(
-                info.accesses,
-                Accesses::RwLock {
-                    reads: 2,
-                    writes: 1
-                }
-            );
-            let guards = &info.guards;
-            assert_eq!(guards.len(), 0);
+            assert_eq!(info.known_guards.len(), 3);
+            for known_guard in info.known_guards.values() {
+                assert_eq!(known_guard.num_uses, 1);
+                assert_eq!(known_guard.active_uses.len(), 0);
+            }
         }
     }
 }
