@@ -14,7 +14,7 @@ fn rwlock() {
         assert_eq!(info.known_guards.len(), 1);
         let known_guard = info.known_guards.values().next().unwrap();
         assert_eq!(known_guard.num_uses, 1);
-        assert_eq!(known_guard.active_uses.len(), 1);
+        assert_eq!(known_guard.num_active_uses(), 1);
     }
 
     let read2 = lock.read();
@@ -26,7 +26,7 @@ fn rwlock() {
         assert_eq!(info.known_guards.len(), 2);
         for known_guard in info.known_guards.values() {
             assert_eq!(known_guard.num_uses, 1);
-            assert_eq!(known_guard.active_uses.len(), 1);
+            assert_eq!(known_guard.num_active_uses(), 1);
         }
     }
 
@@ -50,7 +50,7 @@ fn rwlock() {
         assert_eq!(info.known_guards.len(), 2);
         for known_guard in info.known_guards.values() {
             assert_eq!(known_guard.num_uses, 1);
-            assert_eq!(known_guard.active_uses.len(), 0);
+            assert_eq!(known_guard.num_active_uses(), 0);
         }
     }
 
@@ -75,7 +75,7 @@ fn rwlock() {
         assert_eq!(info.known_guards.len(), 3);
         for known_guard in info.known_guards.values() {
             assert_eq!(known_guard.num_uses, 1);
-            assert_eq!(known_guard.active_uses.len(), 0);
+            assert_eq!(known_guard.num_active_uses(), 0);
         }
     }
 }

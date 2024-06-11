@@ -174,8 +174,8 @@ pub struct GuardInfo {
     pub kind: GuardKind,
     pub location: Location,
     pub num_uses: usize,
-    pub active_uses: HashMap<u64, Instant>,
-    pub avg_duration: SingleSumSMA<Duration, u32, 50>,
+    active_uses: HashMap<u64, Instant>,
+    avg_duration: SingleSumSMA<Duration, u32, 50>,
 }
 
 impl GuardInfo {
@@ -187,6 +187,14 @@ impl GuardInfo {
             active_uses: Default::default(),
             avg_duration: SingleSumSMA::from_zero(Duration::ZERO),
         }
+    }
+
+    pub fn num_active_uses(&self) -> usize {
+        self.active_uses.len()
+    }
+
+    pub fn avg_duration(&self) -> Duration {
+        self.avg_duration.get_average()
     }
 }
 
