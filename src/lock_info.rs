@@ -11,7 +11,7 @@ use rand_xorshift::XorShiftRng;
 use simple_moving_average::{SingleSumSMA, SMA};
 use tracing::trace;
 
-pub static LOCK_INFOS: OnceLock<RwLock<HashMap<Arc<str>, Mutex<LockInfo>>>> = OnceLock::new();
+static LOCK_INFOS: OnceLock<RwLock<HashMap<Arc<str>, Mutex<LockInfo>>>> = OnceLock::new();
 
 fn call_location() -> Arc<str> {
     let backtrace = backtrace::Backtrace::new();
@@ -58,10 +58,10 @@ pub fn lock_snapshots() -> Vec<LockInfo> {
 /// be found in the `LOCK_INFOS` static.
 #[derive(Debug, Clone)]
 pub struct LockInfo {
-    pub(crate) kind: LockKind,
-    pub(crate) location: Arc<str>,
-    pub(crate) rng: XorShiftRng,
-    pub(crate) known_guards: HashMap<Arc<str>, GuardInfo>,
+    pub kind: LockKind,
+    pub location: Arc<str>,
+    rng: XorShiftRng,
+    pub known_guards: HashMap<Arc<str>, GuardInfo>,
 }
 
 impl LockInfo {
@@ -113,10 +113,10 @@ pub enum LockKind {
 /// only contains the guard itself and metadata that allows it to be uniquely
 /// identified in the `LOCK_INFOS` static.
 pub struct LockGuard<T> {
-    pub(crate) guard: T,
-    pub lock_location: Arc<str>,
-    pub guard_location: Arc<str>,
-    pub id: u64,
+    guard: T,
+    lock_location: Arc<str>,
+    guard_location: Arc<str>,
+    id: u64,
 }
 
 impl<T> LockGuard<T> {

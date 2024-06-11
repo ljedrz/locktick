@@ -78,14 +78,7 @@ impl<T: Default> Default for RwLock<T> {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, sync::Arc};
-
     use crate::{lock_info::*, parking_lot::*};
-
-    fn lock_infos(
-    ) -> std::sync::RwLockReadGuard<'static, HashMap<Arc<str>, std::sync::Mutex<LockInfo>>> {
-        LOCK_INFOS.get().unwrap().read().unwrap()
-    }
 
     // FIXME: make locations work
     #[test]
@@ -95,10 +88,9 @@ mod tests {
 
         let read1 = lock.read();
         {
-            assert_eq!(read1.lock_location, lock.location);
-            let infos = lock_infos();
+            let infos = lock_snapshots();
             assert_eq!(infos.len(), 1);
-            let info = infos.values().next().unwrap().lock().unwrap();
+            let info = &infos[0];
             assert_eq!(info.known_guards.len(), 1);
             let known_guard = info.known_guards.values().next().unwrap();
             assert_eq!(known_guard.num_uses, 1);
@@ -107,10 +99,9 @@ mod tests {
 
         let read2 = lock.read();
         {
-            assert_eq!(read2.lock_location, lock.location);
-            let infos = lock_infos();
+            let infos = lock_snapshots();
             assert_eq!(infos.len(), 1);
-            let info = infos.values().next().unwrap().lock().unwrap();
+            let info = &infos[0];
             assert_eq!(info.known_guards.len(), 2);
             for known_guard in info.known_guards.values() {
                 assert_eq!(known_guard.num_uses, 1);
@@ -120,9 +111,9 @@ mod tests {
 
         drop(read1);
         {
-            let infos = lock_infos();
+            let infos = lock_snapshots();
             assert_eq!(infos.len(), 1);
-            let info = infos.values().next().unwrap().lock().unwrap();
+            let info = &infos[0];
             assert_eq!(info.known_guards.len(), 2);
             for known_guard in info.known_guards.values() {
                 assert_eq!(known_guard.num_uses, 1);
@@ -132,9 +123,9 @@ mod tests {
 
         drop(read2);
         {
-            let infos = lock_infos();
+            let infos = lock_snapshots();
             assert_eq!(infos.len(), 1);
-            let info = infos.values().next().unwrap().lock().unwrap();
+            let info = &infos[0];
             assert_eq!(info.known_guards.len(), 2);
             for known_guard in info.known_guards.values() {
                 assert_eq!(known_guard.num_uses, 1);
@@ -144,10 +135,9 @@ mod tests {
 
         let write = lock.write();
         {
-            assert_eq!(write.lock_location, lock.location);
-            let infos = lock_infos();
+            let infos = lock_snapshots();
             assert_eq!(infos.len(), 1);
-            let info = infos.values().next().unwrap().lock().unwrap();
+            let info = &infos[0];
             assert_eq!(info.known_guards.len(), 3);
             for known_guard in info.known_guards.values() {
                 assert_eq!(known_guard.num_uses, 1);
@@ -157,9 +147,9 @@ mod tests {
 
         drop(write);
         {
-            let infos = lock_infos();
+            let infos = lock_snapshots();
             assert_eq!(infos.len(), 1);
-            let info = infos.values().next().unwrap().lock().unwrap();
+            let info = &infos[0];
             assert_eq!(info.known_guards.len(), 3);
             for known_guard in info.known_guards.values() {
                 assert_eq!(known_guard.num_uses, 1);
