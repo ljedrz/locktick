@@ -77,7 +77,7 @@ pub struct LockInfo {
 }
 
 impl LockInfo {
-    pub fn register(kind: LockKind) -> Location {
+    pub(crate) fn register(kind: LockKind) -> Location {
         let location = call_location();
 
         match LOCK_INFOS
