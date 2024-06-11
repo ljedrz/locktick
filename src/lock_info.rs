@@ -72,8 +72,8 @@ pub fn lock_snapshots() -> Vec<LockInfo> {
 pub struct LockInfo {
     pub kind: LockKind,
     pub location: Location,
-    rng: XorShiftRng,
     pub known_guards: HashMap<Location, GuardInfo>,
+    rng: XorShiftRng,
 }
 
 impl LockInfo {
@@ -263,12 +263,4 @@ pub enum GuardKind {
     Lock,
     Read,
     Write,
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn location() {
-        // TODO
-    }
 }
