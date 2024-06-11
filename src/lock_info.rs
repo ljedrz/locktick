@@ -99,7 +99,9 @@ impl fmt::Display for LockInfo {
         write!(
             f,
             "{}: {}; avg guard duration: {:?}",
-            self.location, self.accesses, self.avg_duration,
+            self.location,
+            self.accesses,
+            self.avg_duration.get_average(),
         )?;
 
         for guard in self.guards.values() {
