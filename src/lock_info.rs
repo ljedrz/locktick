@@ -16,7 +16,7 @@ use tracing::trace;
 static LOCK_INFOS: OnceLock<RwLock<HashMap<Location, Mutex<LockInfo>>>> = OnceLock::new();
 
 /// Points to the filesystem location where a lock or guard was created.
-#[derive(Debug, Clone, PartialEq, Eq, Hash,PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Location {
     pub path: Arc<Path>,
     pub line: u32,
@@ -138,8 +138,12 @@ pub struct LockGuard<T> {
 impl<T> LockGuard<T> {
     /// Registers the creation of a guard and returns it wrapped in an object
     /// used to perform relevant accounting when the guard is dropped.
-    pub(crate) fn new(guard: T, guard_kind: GuardKind, lock_location: &Location) -> Self {
-        let acquire_time = Instant::now();
+    pub(crate) fn new(
+        guard: T,
+        guard_kind: GuardKind,
+        lock_location: &Location,
+        wait_time: Duration,
+    ) -> Self {
         let guard_location = call_location();
         trace!("Acquiring a {:?} guard at {}", guard_kind, guard_location);
 
@@ -156,8 +160,9 @@ impl<T> LockGuard<T> {
                 .known_guards
                 .entry(guard_location.clone())
                 .or_insert_with(|| GuardInfo::new(guard_kind, guard_location.clone()));
-            guard_info.active_uses.insert(guard_id, acquire_time);
             guard_info.num_uses += 1;
+            guard_info.avg_wait_time.add_sample(wait_time);
+            guard_info.active_uses.insert(guard_id, Instant::now());
 
             guard_id
         } else {
@@ -180,6 +185,7 @@ pub struct GuardInfo {
     pub location: Location,
     pub num_uses: usize,
     active_uses: HashMap<u64, Instant>,
+    avg_wait_time: SingleSumSMA<Duration, u32, 50>,
     avg_duration: SingleSumSMA<Duration, u32, 50>,
 }
 
@@ -190,6 +196,7 @@ impl GuardInfo {
             location,
             num_uses: 0,
             active_uses: Default::default(),
+            avg_wait_time: SingleSumSMA::from_zero(Duration::ZERO),
             avg_duration: SingleSumSMA::from_zero(Duration::ZERO),
         }
     }
@@ -199,6 +206,12 @@ impl GuardInfo {
     /// indicates that the guard is currently inactive.
     pub fn num_active_uses(&self) -> usize {
         self.active_uses.len()
+    }
+
+    /// Returns the average wait time for the guard. It is a moving
+    /// average that gets updated with each use.
+    pub fn avg_wait_time(&self) -> Duration {
+        self.avg_wait_time.get_average()
     }
 
     /// Returns the average duration of the guard. It is a moving
@@ -212,12 +225,13 @@ impl fmt::Display for GuardInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} ({:?}): curr users: {}; calls: {}; avg duration: {:?}",
+            "{} ({:?}): curr users: {}; calls: {}; avg duration: {:?}; avg wait: {:?}",
             self.location,
             self.kind,
             self.active_uses.len(),
             self.num_uses,
             self.avg_duration.get_average(),
+            self.avg_wait_time.get_average(),
         )
     }
 }
