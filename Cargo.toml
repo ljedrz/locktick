@@ -2,8 +2,14 @@
 name = "locktick"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors = ["ljedrz <ljedrz@gmail.com>"]
+description = ""
+license = "CC0-1.0"
+repository = "https://github.com/ljedrz/locktick"
+documentation = "https://docs.rs/locktick"
+readme = "README.md"
+categories = ["concurrency", "development-tools"]
+keywords = ["lock", "profiling", "utility"]
 
 [features]
 default = ["parking_lot"]
