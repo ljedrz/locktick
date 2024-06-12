@@ -12,8 +12,9 @@ categories = ["concurrency", "development-tools"]
 keywords = ["lock", "profiling", "utility"]
 
 [features]
-default = ["parking_lot"]
+default = ["std"]
 parking_lot = ["dep:parking_lot"]
+std = []
 tracing = ["dep:tracing"]
 test = []
 
@@ -26,4 +27,4 @@ parking_lot = { version = "0.12", optional = true }
 tracing = { version = "0.1", optional = true }
 
 [dev-dependencies]
-locktick = { path = ".", features = ["test"] }
+locktick = { path = ".", default-features = false, features = ["test"] }

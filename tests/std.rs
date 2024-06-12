@@ -1,13 +1,13 @@
-#[cfg(feature = "parking_lot")]
+#[cfg(feature = "std")]
 mod tests {
-    use locktick::{lock_info::*, parking_lot::*};
+    use locktick::{lock_info::*, std::*};
 
     #[test]
     fn rwlock() {
         let obj = String::from("derp");
         let lock = RwLock::new(obj);
 
-        let read1 = lock.read();
+        let read1 = lock.read().unwrap();
         assert_eq!(read1.guard_location.line, line!() - 1);
         {
             let infos = lock_snapshots();
@@ -19,7 +19,7 @@ mod tests {
             assert_eq!(known_guard.num_active_uses(), 1);
         }
 
-        let read2 = lock.read();
+        let read2 = lock.read().unwrap();
         assert_eq!(read2.guard_location.line, line!() - 1);
         {
             let infos = lock_snapshots();
@@ -56,7 +56,7 @@ mod tests {
             }
         }
 
-        let write = lock.write();
+        let write = lock.write().unwrap();
         assert_eq!(write.guard_location.line, line!() - 1);
         {
             let infos = lock_snapshots();
