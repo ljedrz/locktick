@@ -1,6 +1,6 @@
 #[cfg(feature = "std")]
 mod tests {
-    use locktick::{lock_info::*, std::*};
+    use locktick::{lock_snapshots, std::*};
 
     #[test]
     fn rwlock() {

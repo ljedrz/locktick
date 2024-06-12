@@ -1,6 +1,6 @@
 #[cfg(feature = "tokio")]
 mod tests {
-    use locktick::{lock_info::*, tokio::*};
+    use locktick::{lock_snapshots, tokio::*};
 
     #[tokio::test]
     async fn rwlock() {

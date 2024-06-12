@@ -1,6 +1,6 @@
 #[cfg(feature = "parking_lot")]
 mod tests {
-    use locktick::{lock_info::*, parking_lot::*};
+    use locktick::{lock_snapshots, parking_lot::*};
 
     #[test]
     fn rwlock() {
