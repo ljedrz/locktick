@@ -16,7 +16,7 @@ use tracing::trace;
 static LOCK_INFOS: OnceLock<RwLock<HashMap<Location, Mutex<LockInfo>>>> = OnceLock::new();
 
 /// Points to the filesystem location where a lock or guard was created.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash,PartialOrd, Ord)]
 pub struct Location {
     pub path: Arc<Path>,
     pub line: u32,
