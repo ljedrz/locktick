@@ -3,3 +3,5 @@ pub mod lock_info;
 pub mod parking_lot;
 #[cfg(feature = "std")]
 pub mod std;
+#[cfg(feature = "tokio")]
+pub mod tokio;
