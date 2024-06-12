@@ -10,6 +10,7 @@ use std::{
 use rand_core::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
 use simple_moving_average::{SingleSumSMA, SMA};
+#[cfg(feature = "tracing")]
 use tracing::trace;
 
 // Contains data on all created locks and their guards.
@@ -145,6 +146,7 @@ impl<T> LockGuard<T> {
         wait_time: Duration,
     ) -> Self {
         let guard_location = call_location();
+        #[cfg(feature = "tracing")]
         trace!("Acquiring a {:?} guard at {}", guard_kind, guard_location);
 
         let id = if let Some(lock_info) = LOCK_INFOS
@@ -270,6 +272,7 @@ impl<T> Drop for LockGuard<T> {
             let duration = timestamp - guard_timestamp;
             known_guard.avg_duration.add_sample(duration);
 
+            #[cfg(feature = "tracing")]
             trace!(
                 "The {:?} guard for lock {} acquired at {} was dropped after {:?}",
                 known_guard.kind,

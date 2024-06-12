@@ -8,16 +8,16 @@ edition = "2021"
 [features]
 default = ["parking_lot"]
 parking_lot = ["dep:parking_lot"]
+tracing = ["dep:tracing"]
 test = []
 
 [dependencies]
 backtrace = "0.3"
-parking_lot = { version = "0.12", optional = true }
 rand_core = "0.6"
 rand_xorshift = "0.3"
 simple_moving_average = "1"
-tracing = "0.1"
+parking_lot = { version = "0.12", optional = true }
+tracing = { version = "0.1", optional = true }
 
 [dev-dependencies]
-tracing-subscriber = "0.3"
 locktick = { path = ".", features = ["test"] }
