@@ -164,6 +164,9 @@ impl<T> LockGuard<T> {
                 .or_insert_with(|| GuardInfo::new(guard_kind, guard_location.clone()));
             guard_info.num_uses += 1;
             guard_info.avg_wait_time.add_sample(wait_time);
+            if wait_time > guard_info.max_wait_time {
+                guard_info.max_wait_time = wait_time;
+            }
             guard_info.active_uses.insert(guard_id, Instant::now());
 
             guard_id
@@ -188,7 +191,9 @@ pub struct GuardInfo {
     pub num_uses: usize,
     active_uses: HashMap<u64, Instant>,
     avg_wait_time: SingleSumSMA<Duration, u32, 50>,
+    pub max_wait_time: Duration,
     avg_duration: SingleSumSMA<Duration, u32, 50>,
+    pub max_duration: Duration,
 }
 
 impl GuardInfo {
@@ -199,7 +204,9 @@ impl GuardInfo {
             num_uses: 0,
             active_uses: Default::default(),
             avg_wait_time: SingleSumSMA::from_zero(Duration::ZERO),
+            max_wait_time: Duration::ZERO,
             avg_duration: SingleSumSMA::from_zero(Duration::ZERO),
+            max_duration: Duration::ZERO,
         }
     }
 
@@ -227,13 +234,15 @@ impl fmt::Display for GuardInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} ({:?}): curr users: {}; calls: {}; avg duration: {:?}; avg wait: {:?}",
+            "{} ({:?}): curr users: {}; calls: {}; duration: {:?} avg, {:?} max; wait: {:?} avg, {:?} max",
             self.location,
             self.kind,
             self.active_uses.len(),
             self.num_uses,
             self.avg_duration.get_average(),
+            self.max_duration,
             self.avg_wait_time.get_average(),
+            self.max_wait_time,
         )
     }
 }
@@ -271,6 +280,9 @@ impl<T> Drop for LockGuard<T> {
             let guard_timestamp = known_guard.active_uses.remove(&self.id).unwrap();
             let duration = timestamp - guard_timestamp;
             known_guard.avg_duration.add_sample(duration);
+            if duration > known_guard.max_duration {
+                known_guard.max_duration = duration;
+            }
 
             #[cfg(feature = "tracing")]
             trace!(
