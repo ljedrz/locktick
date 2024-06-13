@@ -1,84 +1,36 @@
+mod common;
+
 #[cfg(feature = "tokio")]
 mod tests {
     use locktick::{lock_snapshots, tokio::*};
 
+    use super::*;
+    use common::*;
+
     #[tokio::test]
     async fn rwlock() {
-        let obj = String::from("derp");
-        let lock = RwLock::new(obj);
+        let lock1 = RwLock::new(Object);
+        check_locks!(1, 0, 0);
 
-        let read1 = lock.read().await;
-        assert_eq!(read1.guard_location.line, line!() - 1);
-        {
-            let infos = lock_snapshots();
-            assert_eq!(infos.len(), 1);
-            let info = &infos[0];
-            assert_eq!(info.known_guards.len(), 1);
-            let known_guard = info.known_guards.values().next().unwrap();
-            assert_eq!(known_guard.num_uses, 1);
-            assert_eq!(known_guard.num_active_uses(), 1);
-        }
+        let read1 = lock1.read().await;
+        check_guard!(read1, 1, 1);
 
-        let read2 = lock.read().await;
-        assert_eq!(read2.guard_location.line, line!() - 1);
-        {
-            let infos = lock_snapshots();
-            assert_eq!(infos.len(), 1);
-            let info = &infos[0];
-            assert_eq!(info.known_guards.len(), 2);
-            for known_guard in info.known_guards.values() {
-                assert_eq!(known_guard.num_uses, 1);
-                assert_eq!(known_guard.num_active_uses(), 1);
-            }
-        }
+        let read2 = lock1.read().await;
+        check_guard!(read2, 1, 1);
 
         drop(read1);
-        {
-            let infos = lock_snapshots();
-            assert_eq!(infos.len(), 1);
-            let info = &infos[0];
-            assert_eq!(info.known_guards.len(), 2);
-            for known_guard in info.known_guards.values() {
-                assert_eq!(known_guard.num_uses, 1);
-                // TODO: check that only one is active now
-            }
-        }
+        check_locks!(1, 2, 1);
 
         drop(read2);
-        {
-            let infos = lock_snapshots();
-            assert_eq!(infos.len(), 1);
-            let info = &infos[0];
-            assert_eq!(info.known_guards.len(), 2);
-            for known_guard in info.known_guards.values() {
-                assert_eq!(known_guard.num_uses, 1);
-                assert_eq!(known_guard.num_active_uses(), 0);
-            }
-        }
+        check_locks!(1, 2, 0);
 
-        let write = lock.write().await;
-        assert_eq!(write.guard_location.line, line!() - 1);
-        {
-            let infos = lock_snapshots();
-            assert_eq!(infos.len(), 1);
-            let info = &infos[0];
-            assert_eq!(info.known_guards.len(), 3);
-            for known_guard in info.known_guards.values() {
-                assert_eq!(known_guard.num_uses, 1);
-                // TODO: check that only one is active now
-            }
-        }
+        let write = lock1.write().await;
+        check_guard!(write, 1, 1);
 
         drop(write);
-        {
-            let infos = lock_snapshots();
-            assert_eq!(infos.len(), 1);
-            let info = &infos[0];
-            assert_eq!(info.known_guards.len(), 3);
-            for known_guard in info.known_guards.values() {
-                assert_eq!(known_guard.num_uses, 1);
-                assert_eq!(known_guard.num_active_uses(), 0);
-            }
-        }
+        check_locks!(1, 3, 0);
+
+        let _lock2 = RwLock::new(Object);
+        check_locks!(2, 3, 0);
     }
 }
