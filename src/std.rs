@@ -1,8 +1,12 @@
-use std::time::Instant;
+use std::{
+    sync::{MutexGuard, PoisonError, RwLockReadGuard, RwLockWriteGuard, TryLockError},
+    time::Instant,
+};
 
-use std::sync::{MutexGuard, PoisonError, RwLockReadGuard, RwLockWriteGuard, TryLockError};
+#[cfg(feature = "tracing")]
+use tracing::trace;
 
-use crate::lock_info::{GuardKind, Location, LockGuard, LockInfo, LockKind};
+use crate::lock_info::{call_location, GuardKind, Location, LockGuard, LockInfo, LockKind};
 
 #[derive(Debug)]
 pub struct Mutex<T> {
@@ -19,25 +23,48 @@ impl<T> Mutex<T> {
     }
 
     pub fn lock(&self) -> Result<LockGuard<MutexGuard<'_, T>>, PoisonError<MutexGuard<'_, T>>> {
+        let guard_kind = GuardKind::Lock;
+        let guard_location = call_location();
+        #[cfg(feature = "tracing")]
+        trace!("Acquiring a {:?} guard at {}", guard_kind, guard_location);
         let timestamp = Instant::now();
         let guard = self.lock.lock()?;
         let wait_time = timestamp.elapsed();
         Ok(LockGuard::new(
             guard,
-            GuardKind::Lock,
+            guard_kind,
             &self.location,
+            guard_location,
             wait_time,
         ))
     }
 
     pub fn try_lock(&self) -> Result<LockGuard<MutexGuard<'_, T>>, TryLockError<MutexGuard<T>>> {
+        let guard_kind = GuardKind::Lock;
+        let guard_location = call_location();
+        #[cfg(feature = "tracing")]
+        trace!(
+            "Attempting to acquire a {:?} guard at {}",
+            guard_kind,
+            self.location
+        );
         let timestamp = Instant::now();
-        let guard = self.lock.try_lock()?;
+        #[allow(clippy::map_identity)]
+        let guard = self.lock.try_lock().map_err(|e| {
+            #[cfg(feature = "tracing")]
+            trace!(
+                "Failed to acquire a {:?} guard at {}",
+                guard_kind,
+                guard_location,
+            );
+            e
+        })?;
         let wait_time = timestamp.elapsed();
         Ok(LockGuard::new(
             guard,
-            GuardKind::Lock,
+            guard_kind,
             &self.location,
+            guard_location,
             wait_time,
         ))
     }
@@ -69,13 +96,18 @@ impl<T> RwLock<T> {
     pub fn read(
         &self,
     ) -> Result<LockGuard<RwLockReadGuard<'_, T>>, PoisonError<RwLockReadGuard<'_, T>>> {
+        let guard_kind = GuardKind::Read;
+        let guard_location = call_location();
+        #[cfg(feature = "tracing")]
+        trace!("Acquiring a {:?} guard at {}", guard_kind, guard_location);
         let timestamp = Instant::now();
         let guard = self.lock.read()?;
         let wait_time = timestamp.elapsed();
         Ok(LockGuard::new(
             guard,
-            GuardKind::Read,
+            guard_kind,
             &self.location,
+            guard_location,
             wait_time,
         ))
     }
@@ -83,13 +115,18 @@ impl<T> RwLock<T> {
     pub fn write(
         &self,
     ) -> Result<LockGuard<RwLockWriteGuard<'_, T>>, PoisonError<RwLockWriteGuard<'_, T>>> {
+        let guard_kind = GuardKind::Write;
+        let guard_location = call_location();
+        #[cfg(feature = "tracing")]
+        trace!("Acquiring a {:?} guard at {}", guard_kind, guard_location);
         let timestamp = Instant::now();
         let guard = self.lock.write()?;
         let wait_time = timestamp.elapsed();
         Ok(LockGuard::new(
             guard,
-            GuardKind::Write,
+            guard_kind,
             &self.location,
+            guard_location,
             wait_time,
         ))
     }

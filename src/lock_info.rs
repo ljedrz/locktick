@@ -35,7 +35,7 @@ impl fmt::Display for Location {
 }
 
 // Provides the means to procure the location of a lock or its guard.
-fn call_location() -> Location {
+pub(crate) fn call_location() -> Location {
     let backtrace = backtrace::Backtrace::new();
     let frames = backtrace.frames();
     let symbol = frames
@@ -145,11 +145,11 @@ impl<T> LockGuard<T> {
         guard: T,
         guard_kind: GuardKind,
         lock_location: &Location,
+        guard_location: Location,
         wait_time: Duration,
     ) -> Self {
-        let guard_location = call_location();
         #[cfg(feature = "tracing")]
-        trace!("Acquiring a {:?} guard at {}", guard_kind, guard_location);
+        trace!("Acquired a {:?} guard at {}", guard_kind, guard_location);
 
         let guard_index = if let Some(lock_info) = LOCK_INFOS
             .get_or_init(Default::default) // TODO: check if this is really needed

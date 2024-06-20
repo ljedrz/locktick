@@ -1,8 +1,10 @@
 use std::time::Instant;
 
 use tokio::sync::{MutexGuard, RwLockReadGuard, RwLockWriteGuard, TryLockError};
+#[cfg(feature = "tracing")]
+use tracing::trace;
 
-use crate::lock_info::{GuardKind, Location, LockGuard, LockInfo, LockKind};
+use crate::lock_info::{call_location, GuardKind, Location, LockGuard, LockInfo, LockKind};
 
 #[derive(Debug)]
 pub struct Mutex<T> {
@@ -19,20 +21,42 @@ impl<T> Mutex<T> {
     }
 
     pub async fn lock(&self) -> LockGuard<MutexGuard<'_, T>> {
+        let guard_kind = GuardKind::Lock;
+        let guard_location = call_location();
+        #[cfg(feature = "tracing")]
+        trace!("Acquiring a {:?} guard at {}", guard_kind, guard_location);
         let timestamp = Instant::now();
         let guard = self.lock.lock().await;
         let wait_time = timestamp.elapsed();
-        LockGuard::new(guard, GuardKind::Lock, &self.location, wait_time)
+        LockGuard::new(guard, guard_kind, &self.location, guard_location, wait_time)
     }
 
     pub fn try_lock(&self) -> Result<LockGuard<MutexGuard<'_, T>>, TryLockError> {
+        let guard_kind = GuardKind::Lock;
+        let guard_location = call_location();
+        #[cfg(feature = "tracing")]
+        trace!(
+            "Attempting to acquire a {:?} guard at {}",
+            guard_kind,
+            guard_location
+        );
         let timestamp = Instant::now();
-        let guard = self.lock.try_lock()?;
+        #[allow(clippy::map_identity)]
+        let guard = self.lock.try_lock().map_err(|e| {
+            #[cfg(feature = "tracing")]
+            trace!(
+                "Failed to acquire a {:?} guard at {}",
+                guard_kind,
+                guard_location,
+            );
+            e
+        })?;
         let wait_time = timestamp.elapsed();
         Ok(LockGuard::new(
             guard,
-            GuardKind::Lock,
+            guard_kind,
             &self.location,
+            guard_location,
             wait_time,
         ))
     }
@@ -62,17 +86,25 @@ impl<T> RwLock<T> {
     }
 
     pub async fn read(&self) -> LockGuard<RwLockReadGuard<'_, T>> {
+        let guard_kind = GuardKind::Read;
+        let guard_location = call_location();
+        #[cfg(feature = "tracing")]
+        trace!("Acquiring a {:?} guard at {}", guard_kind, guard_location);
         let timestamp = Instant::now();
         let guard = self.lock.read().await;
         let wait_time = timestamp.elapsed();
-        LockGuard::new(guard, GuardKind::Read, &self.location, wait_time)
+        LockGuard::new(guard, guard_kind, &self.location, guard_location, wait_time)
     }
 
     pub async fn write(&self) -> LockGuard<RwLockWriteGuard<'_, T>> {
+        let guard_kind = GuardKind::Write;
+        let guard_location = call_location();
+        #[cfg(feature = "tracing")]
+        trace!("Acquiring a {:?} guard at {}", guard_kind, guard_location);
         let timestamp = Instant::now();
         let guard = self.lock.write().await;
         let wait_time = timestamp.elapsed();
-        LockGuard::new(guard, GuardKind::Write, &self.location, wait_time)
+        LockGuard::new(guard, guard_kind, &self.location, guard_location, wait_time)
     }
 
     pub fn into_inner(self) -> T {
