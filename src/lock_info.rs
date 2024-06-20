@@ -1,14 +1,13 @@
 use std::{
     collections::{hash_map::Entry, HashMap},
     fmt,
+    num::Wrapping,
     ops::{Deref, DerefMut},
     path::Path,
     sync::{Arc, Mutex, OnceLock, RwLock},
     time::{Duration, Instant},
 };
 
-use rand_core::{RngCore, SeedableRng};
-use rand_xorshift::XorShiftRng;
 use simple_moving_average::{SingleSumSMA, SMA};
 #[cfg(feature = "tracing")]
 use tracing::trace;
@@ -76,7 +75,7 @@ pub struct LockInfo {
     pub kind: LockKind,
     pub location: Location,
     pub known_guards: HashMap<Location, GuardInfo>,
-    rng: XorShiftRng,
+    next_guard_id: Wrapping<usize>,
 }
 
 impl LockInfo {
@@ -95,8 +94,8 @@ impl LockInfo {
                 let info = Mutex::new(Self {
                     kind,
                     location: location.clone(),
-                    rng: XorShiftRng::seed_from_u64(0),
                     known_guards: Default::default(),
+                    next_guard_id: Default::default(),
                 });
 
                 entry.insert(info);
@@ -133,7 +132,7 @@ pub struct LockGuard<T> {
     guard: T,
     pub lock_location: Location,
     pub guard_location: Location,
-    id: u64,
+    id: usize,
 }
 
 impl<T> LockGuard<T> {
@@ -157,7 +156,8 @@ impl<T> LockGuard<T> {
         {
             let mut lock_info = lock_info.lock().unwrap();
 
-            let guard_id = lock_info.rng.next_u64();
+            let guard_id = lock_info.next_guard_id.0;
+            lock_info.next_guard_id += 1;
             let guard_info = lock_info
                 .known_guards
                 .entry(guard_location.clone())
@@ -189,7 +189,7 @@ pub struct GuardInfo {
     pub kind: GuardKind,
     pub location: Location,
     pub num_uses: usize,
-    active_uses: HashMap<u64, Instant>,
+    active_uses: HashMap<usize, Instant>,
     avg_wait_time: SingleSumSMA<Duration, u32, 50>,
     pub max_wait_time: Duration,
     avg_duration: SingleSumSMA<Duration, u32, 50>,
