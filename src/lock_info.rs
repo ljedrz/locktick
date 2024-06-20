@@ -1,10 +1,12 @@
 use std::{
     collections::{hash_map::Entry, HashMap},
     fmt,
-    num::Wrapping,
     ops::{Deref, DerefMut},
     path::Path,
-    sync::{Arc, Mutex, OnceLock, RwLock},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, Mutex, OnceLock, RwLock,
+    },
     time::{Duration, Instant},
 };
 
@@ -14,6 +16,9 @@ use tracing::trace;
 
 // Contains data on all created locks and their guards.
 static LOCK_INFOS: OnceLock<RwLock<HashMap<Location, Mutex<LockInfo>>>> = OnceLock::new();
+
+// Provides a common source of indices for all the guards.
+static GUARD_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 /// Points to the filesystem location where a lock or guard was created.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -75,7 +80,6 @@ pub struct LockInfo {
     pub kind: LockKind,
     pub location: Location,
     pub known_guards: HashMap<Location, GuardInfo>,
-    next_guard_id: Wrapping<usize>,
 }
 
 impl LockInfo {
@@ -95,7 +99,6 @@ impl LockInfo {
                     kind,
                     location: location.clone(),
                     known_guards: Default::default(),
-                    next_guard_id: Default::default(),
                 });
 
                 entry.insert(info);
@@ -132,7 +135,7 @@ pub struct LockGuard<T> {
     guard: T,
     pub lock_location: Location,
     pub guard_location: Location,
-    id: usize,
+    pub guard_index: usize,
 }
 
 impl<T> LockGuard<T> {
@@ -148,16 +151,15 @@ impl<T> LockGuard<T> {
         #[cfg(feature = "tracing")]
         trace!("Acquiring a {:?} guard at {}", guard_kind, guard_location);
 
-        let id = if let Some(lock_info) = LOCK_INFOS
+        let guard_index = if let Some(lock_info) = LOCK_INFOS
             .get_or_init(Default::default) // TODO: check if this is really needed
             .read()
             .unwrap()
             .get(lock_location)
         {
+            let guard_idx = GUARD_COUNTER.fetch_add(1, Ordering::Relaxed);
             let mut lock_info = lock_info.lock().unwrap();
 
-            let guard_id = lock_info.next_guard_id.0;
-            lock_info.next_guard_id += 1;
             let guard_info = lock_info
                 .known_guards
                 .entry(guard_location.clone())
@@ -167,9 +169,9 @@ impl<T> LockGuard<T> {
             if wait_time > guard_info.max_wait_time {
                 guard_info.max_wait_time = wait_time;
             }
-            guard_info.active_uses.insert(guard_id, Instant::now());
+            guard_info.active_uses.insert(guard_idx, Instant::now());
 
-            guard_id
+            guard_idx
         } else {
             unreachable!();
         };
@@ -178,7 +180,7 @@ impl<T> LockGuard<T> {
             guard,
             lock_location: lock_location.clone(),
             guard_location,
-            id,
+            guard_index,
         }
     }
 }
@@ -215,6 +217,14 @@ impl GuardInfo {
     /// indicates that the guard is currently inactive.
     pub fn num_active_uses(&self) -> usize {
         self.active_uses.len()
+    }
+
+    /// Returns numbers corresponding to the order in which the currently
+    /// active guards were called, which can be useful for debugging purposes.
+    pub fn active_call_indices(&self) -> Vec<usize> {
+        let mut indices = self.active_uses.keys().copied().collect::<Vec<_>>();
+        indices.sort_unstable();
+        indices
     }
 
     /// Returns the average wait time for the guard. It is a moving
@@ -277,7 +287,7 @@ impl<T> Drop for LockGuard<T> {
                 .known_guards
                 .get_mut(&self.guard_location)
                 .unwrap();
-            let guard_timestamp = known_guard.active_uses.remove(&self.id).unwrap();
+            let guard_timestamp = known_guard.active_uses.remove(&self.guard_index).unwrap();
             let duration = timestamp - guard_timestamp;
             known_guard.avg_duration.add_sample(duration);
             if duration > known_guard.max_duration {

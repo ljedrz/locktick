@@ -1,7 +1,8 @@
 # 0.2.0
 
 ### Added
-- `GuardInfo::{max_duration, max_wait_time}`
+- `GuardInfo::{active_call_indices, max_duration, max_wait_time}`
 
 ### Changed
 - simplified guard identifiers
+- all the guards share a common counter now, so their call order can be deduced
