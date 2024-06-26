@@ -2,13 +2,37 @@ mod common;
 
 #[cfg(feature = "tokio")]
 mod tests {
-    use locktick::{lock_snapshots, tokio::*};
+    use locktick::{clear_lock_infos, lock_snapshots, tokio::*};
+    use serial_test::serial;
 
     use super::*;
     use common::*;
 
     #[tokio::test]
+    #[serial]
+    async fn mutex() {
+        clear_lock_infos();
+
+        let lock1 = Mutex::new(Object);
+        check_locks!(1, 0, 0);
+
+        let lock2 = Mutex::new(Object);
+        check_locks!(2, 0, 0);
+
+        let guard1 = lock1.lock().await;
+        check_guard!(guard1, 1, 1);
+        check_locks!(2, 1, 1);
+
+        let guard2 = lock2.lock().await;
+        check_guard!(guard2, 1, 1);
+        check_locks!(2, 2, 2);
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn rwlock() {
+        clear_lock_infos();
+
         let lock1 = RwLock::new(Object);
         check_locks!(1, 0, 0);
 

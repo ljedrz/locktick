@@ -73,6 +73,15 @@ pub fn lock_snapshots() -> Vec<LockInfo> {
         .collect()
 }
 
+#[cfg(feature = "test")]
+pub fn clear_lock_infos() {
+    LOCK_INFOS
+        .get_or_init(Default::default)
+        .write()
+        .unwrap()
+        .clear();
+}
+
 /// Contains all the details related to a given lock, and it can only
 /// be obtained through a call to `lock_snapshots`.
 #[derive(Debug, Clone)]

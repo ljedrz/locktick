@@ -2,13 +2,37 @@ mod common;
 
 #[cfg(feature = "std")]
 mod tests {
-    use locktick::{lock_snapshots, std::*};
+    use locktick::{clear_lock_infos, lock_snapshots, std::*};
+    use serial_test::serial;
 
     use super::*;
     use common::*;
 
     #[test]
+    #[serial]
+    fn mutex() {
+        clear_lock_infos();
+
+        let lock1 = Mutex::new(Object);
+        check_locks!(1, 0, 0);
+
+        let lock2 = Mutex::new(Object);
+        check_locks!(2, 0, 0);
+
+        let guard1 = lock1.lock().unwrap();
+        check_guard!(guard1, 1, 1);
+        check_locks!(2, 1, 1);
+
+        let guard2 = lock2.lock().unwrap();
+        check_guard!(guard2, 1, 1);
+        check_locks!(2, 2, 2);
+    }
+
+    #[test]
+    #[serial]
     fn rwlock() {
+        clear_lock_infos();
+
         let lock1 = RwLock::new(Object);
         check_locks!(1, 0, 0);
 
