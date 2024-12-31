@@ -95,6 +95,35 @@ impl<T> RwLock<T> {
         LockGuard::new(guard, guard_kind, &self.location, guard_location, wait_time)
     }
 
+    pub fn try_read(&self) -> Option<LockGuard<RwLockReadGuard<'_, T>>> {
+        let guard_kind = GuardKind::Read;
+        let guard_location = call_location();
+        #[cfg(feature = "tracing")]
+        trace!(
+            "Attempting to acquire a {:?} guard at {}",
+            guard_kind,
+            guard_location
+        );
+        let timestamp = Instant::now();
+        let guard = self.lock.try_read().or_else(|| {
+            #[cfg(feature = "tracing")]
+            trace!(
+                "Failed to acquire a {:?} guard at {}",
+                guard_kind,
+                guard_location,
+            );
+            None
+        })?;
+        let wait_time = timestamp.elapsed();
+        Some(LockGuard::new(
+            guard,
+            guard_kind,
+            &self.location,
+            guard_location,
+            wait_time,
+        ))
+    }
+
     pub fn write(&self) -> LockGuard<RwLockWriteGuard<'_, T>> {
         let guard_kind = GuardKind::Write;
         let guard_location = call_location();
@@ -104,6 +133,35 @@ impl<T> RwLock<T> {
         let guard = self.lock.write();
         let wait_time = timestamp.elapsed();
         LockGuard::new(guard, guard_kind, &self.location, guard_location, wait_time)
+    }
+
+    pub fn try_write(&self) -> Option<LockGuard<RwLockWriteGuard<'_, T>>> {
+        let guard_kind = GuardKind::Write;
+        let guard_location = call_location();
+        #[cfg(feature = "tracing")]
+        trace!(
+            "Attempting to acquire a {:?} guard at {}",
+            guard_kind,
+            guard_location
+        );
+        let timestamp = Instant::now();
+        let guard = self.lock.try_write().or_else(|| {
+            #[cfg(feature = "tracing")]
+            trace!(
+                "Failed to acquire a {:?} guard at {}",
+                guard_kind,
+                guard_location,
+            );
+            None
+        })?;
+        let wait_time = timestamp.elapsed();
+        Some(LockGuard::new(
+            guard,
+            guard_kind,
+            &self.location,
+            guard_location,
+            wait_time,
+        ))
     }
 
     pub fn into_inner(self) -> T {

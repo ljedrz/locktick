@@ -42,14 +42,12 @@ impl<T> Mutex<T> {
         );
         let timestamp = Instant::now();
         #[allow(clippy::map_identity)]
-        let guard = self.lock.try_lock().map_err(|e| {
+        let guard = self.lock.try_lock().inspect_err(|e| {
             #[cfg(feature = "tracing")]
             trace!(
-                "Failed to acquire a {:?} guard at {}",
+                "Failed to acquire a {:?} guard at {guard_location}: {e}",
                 guard_kind,
-                guard_location,
             );
-            e
         })?;
         let wait_time = timestamp.elapsed();
         Ok(LockGuard::new(
@@ -96,6 +94,33 @@ impl<T> RwLock<T> {
         LockGuard::new(guard, guard_kind, &self.location, guard_location, wait_time)
     }
 
+    pub fn try_read(&self) -> Result<LockGuard<RwLockReadGuard<'_, T>>, TryLockError> {
+        let guard_kind = GuardKind::Read;
+        let guard_location = call_location();
+        #[cfg(feature = "tracing")]
+        trace!(
+            "Attempting to acquire a {:?} guard at {}",
+            guard_kind,
+            guard_location
+        );
+        let timestamp = Instant::now();
+        let guard = self.lock.try_read().inspect_err(|e| {
+            #[cfg(feature = "tracing")]
+            trace!(
+                "Failed to acquire a {:?} guard at {guard_location}: {e}",
+                guard_kind,
+            );
+        })?;
+        let wait_time = timestamp.elapsed();
+        Ok(LockGuard::new(
+            guard,
+            guard_kind,
+            &self.location,
+            guard_location,
+            wait_time,
+        ))
+    }
+
     pub async fn write(&self) -> LockGuard<RwLockWriteGuard<'_, T>> {
         let guard_kind = GuardKind::Write;
         let guard_location = call_location();
@@ -105,6 +130,33 @@ impl<T> RwLock<T> {
         let guard = self.lock.write().await;
         let wait_time = timestamp.elapsed();
         LockGuard::new(guard, guard_kind, &self.location, guard_location, wait_time)
+    }
+
+    pub fn try_write(&self) -> Result<LockGuard<RwLockWriteGuard<'_, T>>, TryLockError> {
+        let guard_kind = GuardKind::Write;
+        let guard_location = call_location();
+        #[cfg(feature = "tracing")]
+        trace!(
+            "Attempting to acquire a {:?} guard at {}",
+            guard_kind,
+            guard_location
+        );
+        let timestamp = Instant::now();
+        let guard = self.lock.try_write().inspect_err(|e| {
+            #[cfg(feature = "tracing")]
+            trace!(
+                "Failed to acquire a {:?} guard at {guard_location}: {e}",
+                guard_kind,
+            );
+        })?;
+        let wait_time = timestamp.elapsed();
+        Ok(LockGuard::new(
+            guard,
+            guard_kind,
+            &self.location,
+            guard_location,
+            wait_time,
+        ))
     }
 
     pub fn into_inner(self) -> T {
