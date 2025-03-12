@@ -50,10 +50,10 @@ impl<T> Mutex<T> {
         );
         let timestamp = Instant::now();
         #[allow(clippy::map_identity)]
-        let guard = self.lock.try_lock().inspect_err(|e| {
+        let guard = self.lock.try_lock().inspect_err(|_e| {
             #[cfg(feature = "tracing")]
             trace!(
-                "Failed to acquire a {:?} guard at {guard_location}: {e}",
+                "Failed to acquire a {:?} guard at {guard_location}: {_e}",
                 guard_kind,
             );
         })?;
@@ -122,10 +122,10 @@ impl<T> RwLock<T> {
             guard_location
         );
         let timestamp = Instant::now();
-        let guard = self.lock.try_read().inspect_err(|e| {
+        let guard = self.lock.try_read().inspect_err(|_e| {
             #[cfg(feature = "tracing")]
             trace!(
-                "Failed to acquire a {:?} guard at {guard_location}: {e}",
+                "Failed to acquire a {:?} guard at {guard_location}: {_e}",
                 guard_kind,
             );
         })?;
@@ -170,10 +170,10 @@ impl<T> RwLock<T> {
             guard_location
         );
         let timestamp = Instant::now();
-        let guard = self.lock.try_write().inspect_err(|e| {
+        let guard = self.lock.try_write().inspect_err(|_e| {
             #[cfg(feature = "tracing")]
             trace!(
-                "Failed to acquire a {:?} guard at {guard_location}: {e}",
+                "Failed to acquire a {:?} guard at {guard_location}: {_e}",
                 guard_kind,
             );
         })?;
