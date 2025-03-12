@@ -1,3 +1,8 @@
+# 0.3.0
+
+### Added
+- `try_read` and `try_write` for all the supported crates
+
 # 0.2.0
 
 ### Added
