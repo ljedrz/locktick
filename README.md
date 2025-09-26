@@ -4,6 +4,7 @@
 [![actively developed](https://img.shields.io/badge/maintenance-actively--developed-brightgreen.svg)](https://gist.github.com/cheerfulstoic/d107229326a01ff0f333a1d3476e068d)
 
 **locktick** provides the means to measure things like the average guard duration and wait time for different kinds of locks, just by substituting the applicable locks' imports.
+It makes the detection of deadlocks trivial, and can point to all the locks involved.
 
 ## Example use
 ```rust

@@ -39,7 +39,9 @@ impl<T> Mutex<T> {
         ))
     }
 
-    pub fn try_lock(&self) -> Result<LockGuard<MutexGuard<'_, T>>, TryLockError<MutexGuard<T>>> {
+    pub fn try_lock(
+        &self,
+    ) -> Result<LockGuard<MutexGuard<'_, T>>, TryLockError<MutexGuard<'_, T>>> {
         let guard_kind = GuardKind::Lock;
         let guard_location = call_location();
         #[cfg(feature = "tracing")]

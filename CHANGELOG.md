@@ -1,3 +1,8 @@
+# 0.4.0
+
+### Added
+- `LockGuard` is now re-exported
+
 # 0.3.0
 
 ### Added

@@ -1,6 +1,6 @@
 [package]
 name = "locktick"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 authors = ["ljedrz <ljedrz@gmail.com>"]
 description = "Automated lock accounting & profiling"
@@ -9,7 +9,7 @@ repository = "https://github.com/ljedrz/locktick"
 documentation = "https://docs.rs/locktick"
 readme = "README.md"
 categories = ["concurrency", "development-tools"]
-keywords = ["lock", "profiling", "utility"]
+keywords = ["deadlock", "lock", "profiling", "utility"]
 
 [features]
 default = ["std"]
