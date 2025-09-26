@@ -123,7 +123,7 @@ impl fmt::Display for LockInfo {
         write!(f, "{} ({:?}):", self.location, self.kind)?;
 
         for guard in self.known_guards.values() {
-            write!(f, "\n- {}", guard)?;
+            write!(f, "\n- {guard}")?;
         }
 
         Ok(())
