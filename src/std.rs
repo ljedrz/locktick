@@ -6,7 +6,7 @@ use std::{
 #[cfg(feature = "tracing")]
 use tracing::trace;
 
-use crate::lock_info::{call_location, GuardKind, Location, LockGuard, LockInfo, LockKind};
+use crate::lock_info::{call_location, GuardKind, Location, LockGuard, LockInfo, LockKind, WaitGuard};
 
 #[derive(Debug)]
 pub struct Mutex<T> {
@@ -27,16 +27,33 @@ impl<T> Mutex<T> {
         let guard_location = call_location();
         #[cfg(feature = "tracing")]
         trace!("Acquiring a {:?} guard at {}", guard_kind, guard_location);
+
+        // Fast path -- try to acquire lock without blocking first
         let timestamp = Instant::now();
+        match self.lock.try_lock() {
+            Ok(guard) => {
+                let wait_time = timestamp.elapsed();
+                return Ok(LockGuard::new(
+                    guard,
+                    guard_kind,
+                    &self.location,
+                    guard_location,
+                    wait_time,
+                ));
+            }
+            Err(std::sync::TryLockError::Poisoned(e)) => {
+                return Err(PoisonError::new(e.into_inner()));
+            }
+            Err(std::sync::TryLockError::WouldBlock) => {
+                // Lock is contended, fall through to blocking path
+            }
+        }
+
+        // Lock is contended, create WaitGuard and block
+        let wait_guard = WaitGuard::new(guard_kind, &self.location, guard_location);
         let guard = self.lock.lock()?;
         let wait_time = timestamp.elapsed();
-        Ok(LockGuard::new(
-            guard,
-            guard_kind,
-            &self.location,
-            guard_location,
-            wait_time,
-        ))
+        Ok(LockGuard::from_wait_guard(guard, wait_guard, wait_time))
     }
 
     pub fn try_lock(
@@ -100,16 +117,33 @@ impl<T> RwLock<T> {
         let guard_location = call_location();
         #[cfg(feature = "tracing")]
         trace!("Acquiring a {:?} guard at {}", guard_kind, guard_location);
+
+        // Fast path -- try to acquire lock without blocking first
         let timestamp = Instant::now();
+        match self.lock.try_read() {
+            Ok(guard) => {
+                let wait_time = timestamp.elapsed();
+                return Ok(LockGuard::new(
+                    guard,
+                    guard_kind,
+                    &self.location,
+                    guard_location,
+                    wait_time,
+                ));
+            }
+            Err(std::sync::TryLockError::Poisoned(e)) => {
+                return Err(PoisonError::new(e.into_inner()));
+            }
+            Err(std::sync::TryLockError::WouldBlock) => {
+                // Lock is contended, fall through to blocking path
+            }
+        }
+
+        // Lock is contended, create WaitGuard and block
+        let wait_guard = WaitGuard::new(guard_kind, &self.location, guard_location);
         let guard = self.lock.read()?;
         let wait_time = timestamp.elapsed();
-        Ok(LockGuard::new(
-            guard,
-            guard_kind,
-            &self.location,
-            guard_location,
-            wait_time,
-        ))
+        Ok(LockGuard::from_wait_guard(guard, wait_guard, wait_time))
     }
 
     pub fn try_read(
@@ -148,16 +182,33 @@ impl<T> RwLock<T> {
         let guard_location = call_location();
         #[cfg(feature = "tracing")]
         trace!("Acquiring a {:?} guard at {}", guard_kind, guard_location);
+
+        // Fast path -- try to acquire lock without blocking first
         let timestamp = Instant::now();
+        match self.lock.try_write() {
+            Ok(guard) => {
+                let wait_time = timestamp.elapsed();
+                return Ok(LockGuard::new(
+                    guard,
+                    guard_kind,
+                    &self.location,
+                    guard_location,
+                    wait_time,
+                ));
+            }
+            Err(std::sync::TryLockError::Poisoned(e)) => {
+                return Err(PoisonError::new(e.into_inner()));
+            }
+            Err(std::sync::TryLockError::WouldBlock) => {
+                // Lock is contended, fall through to blocking path
+            }
+        }
+
+        // Lock is contended, create WaitGuard and block
+        let wait_guard = WaitGuard::new(guard_kind, &self.location, guard_location);
         let guard = self.lock.write()?;
         let wait_time = timestamp.elapsed();
-        Ok(LockGuard::new(
-            guard,
-            guard_kind,
-            &self.location,
-            guard_location,
-            wait_time,
-        ))
+        Ok(LockGuard::from_wait_guard(guard, wait_guard, wait_time))
     }
 
     pub fn try_write(
