@@ -5,7 +5,7 @@ use std::{
     path::Path,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, Mutex, OnceLock, RwLock,
+        Arc, LazyLock, Mutex, RwLock,
     },
     time::{Duration, Instant},
 };
@@ -15,7 +15,8 @@ use simple_moving_average::{SingleSumSMA, SMA};
 use tracing::trace;
 
 // Contains data on all created locks and their guards.
-static LOCK_INFOS: OnceLock<RwLock<HashMap<Location, Mutex<LockInfo>>>> = OnceLock::new();
+static LOCK_INFOS: LazyLock<RwLock<HashMap<Location, Mutex<LockInfo>>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
 
 // Provides a common source of indices for all the guards.
 static GUARD_COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -65,7 +66,6 @@ pub(crate) fn call_location() -> Location {
 /// Returns a vector containing snapshots of the data related to all the locks.
 pub fn lock_snapshots() -> Vec<LockInfo> {
     LOCK_INFOS
-        .get_or_init(Default::default)
         .read()
         .unwrap()
         .values()
@@ -75,11 +75,7 @@ pub fn lock_snapshots() -> Vec<LockInfo> {
 
 #[cfg(feature = "test")]
 pub fn clear_lock_infos() {
-    LOCK_INFOS
-        .get_or_init(Default::default)
-        .write()
-        .unwrap()
-        .clear();
+    LOCK_INFOS.write().unwrap().clear();
 }
 
 /// Contains all the details related to a given lock, and it can only
@@ -97,12 +93,7 @@ impl LockInfo {
     pub(crate) fn register(kind: LockKind) -> Location {
         let location = call_location();
 
-        match LOCK_INFOS
-            .get_or_init(Default::default)
-            .write()
-            .unwrap()
-            .entry(location.clone())
-        {
+        match LOCK_INFOS.write().unwrap().entry(location.clone()) {
             Entry::Vacant(entry) => {
                 let info = Mutex::new(Self {
                     kind,
@@ -160,12 +151,7 @@ impl<T> LockGuard<T> {
         #[cfg(feature = "tracing")]
         trace!("Acquired a {:?} guard at {}", guard_kind, guard_location);
 
-        let guard_index = if let Some(lock_info) = LOCK_INFOS
-            .get_or_init(Default::default) // TODO: check if this is really needed
-            .read()
-            .unwrap()
-            .get(lock_location)
-        {
+        let guard_index = if let Some(lock_info) = LOCK_INFOS.read().unwrap().get(lock_location) {
             let guard_idx = GUARD_COUNTER.fetch_add(1, Ordering::Relaxed);
             let mut lock_info = lock_info.lock().unwrap();
 
@@ -207,12 +193,7 @@ impl<T> LockGuard<T> {
         #[cfg(feature = "tracing")]
         trace!("Acquired a {:?} guard at {}", guard_kind, guard_location);
 
-        if let Some(lock_info) = LOCK_INFOS
-            .get_or_init(Default::default)
-            .read()
-            .unwrap()
-            .get(&lock_location)
-        {
+        if let Some(lock_info) = LOCK_INFOS.read().unwrap().get(&lock_location) {
             let mut lock_info = lock_info.lock().unwrap();
 
             let guard_info = lock_info
@@ -267,12 +248,7 @@ impl WaitGuard {
 
         let wait_index = GUARD_COUNTER.fetch_add(1, Ordering::Relaxed);
 
-        if let Some(lock_info) = LOCK_INFOS
-            .get_or_init(Default::default)
-            .read()
-            .unwrap()
-            .get(lock_location)
-        {
+        if let Some(lock_info) = LOCK_INFOS.read().unwrap().get(lock_location) {
             let mut lock_info = lock_info.lock().unwrap();
 
             let guard_info = lock_info
@@ -313,13 +289,7 @@ impl Drop for WaitGuard {
             self.guard_location
         );
 
-        if let Some(lock_info) = LOCK_INFOS
-            .get()
-            .unwrap()
-            .read()
-            .unwrap()
-            .get(&self.lock_location)
-        {
+        if let Some(lock_info) = LOCK_INFOS.read().unwrap().get(&self.lock_location) {
             let mut lock_info = lock_info.lock().unwrap();
             if let Some(guard_info) = lock_info.known_guards.get_mut(&self.guard_location) {
                 guard_info.waiting_tasks.remove(&self.wait_index);
@@ -355,6 +325,11 @@ impl GuardInfo {
             avg_duration: SingleSumSMA::from_zero(Duration::ZERO),
             max_duration: Duration::ZERO,
         }
+    }
+
+    /// Returns `true` if threads are currently holding or waiting for this guard.
+    pub fn is_in_use(&self) -> bool {
+        !self.active_uses.is_empty() || !self.waiting_tasks.is_empty()
     }
 
     /// Returns the number of current uses of the guard. It can
@@ -434,13 +409,7 @@ impl<T> Drop for LockGuard<T> {
     fn drop(&mut self) {
         let timestamp = Instant::now();
 
-        if let Some(lock_info) = LOCK_INFOS
-            .get()
-            .unwrap()
-            .read()
-            .unwrap()
-            .get(&self.lock_location)
-        {
+        if let Some(lock_info) = LOCK_INFOS.read().unwrap().get(&self.lock_location) {
             let mut lock_info = lock_info.lock().unwrap();
             let known_guard = lock_info
                 .known_guards

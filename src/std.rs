@@ -6,7 +6,9 @@ use std::{
 #[cfg(feature = "tracing")]
 use tracing::trace;
 
-use crate::lock_info::{call_location, GuardKind, Location, LockGuard, LockInfo, LockKind, WaitGuard};
+use crate::lock_info::{
+    call_location, GuardKind, Location, LockGuard, LockInfo, LockKind, WaitGuard,
+};
 
 #[derive(Debug)]
 pub struct Mutex<T> {
