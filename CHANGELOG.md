@@ -1,3 +1,13 @@
+# 0.5.0
+
+### Added
+- `WaitGuard`, providing the means to track the number of users waiting to acquire guards
+- `GuardInfo::{is_in_use, num_waiting, waiting_call_indices}`
+
+### Changed
+
+- bumped the MSRV to 1.80 due to the use of `LazyLock`
+
 # 0.4.0
 
 ### Added
