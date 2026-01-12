@@ -4,7 +4,9 @@ use parking_lot::{MutexGuard, RwLockReadGuard, RwLockWriteGuard};
 #[cfg(feature = "tracing")]
 use tracing::trace;
 
-use crate::lock_info::{call_location, GuardKind, Location, LockGuard, LockInfo, LockKind};
+use crate::lock_info::{
+    call_location, GuardKind, Location, LockGuard, LockInfo, LockKind, WaitGuard,
+};
 
 #[derive(Debug)]
 pub struct Mutex<T> {
@@ -25,10 +27,19 @@ impl<T> Mutex<T> {
         let guard_location = call_location();
         #[cfg(feature = "tracing")]
         trace!("Acquiring a {:?} guard at {}", guard_kind, guard_location);
+
+        // Fast path -- try to acquire lock without blocking first
         let timestamp = Instant::now();
+        if let Some(guard) = self.lock.try_lock() {
+            let wait_time = timestamp.elapsed();
+            return LockGuard::new(guard, guard_kind, &self.location, guard_location, wait_time);
+        }
+
+        // Lock is contended, create WaitGuard and block
+        let wait_guard = WaitGuard::new(guard_kind, &self.location, guard_location);
         let guard = self.lock.lock();
         let wait_time = timestamp.elapsed();
-        LockGuard::new(guard, guard_kind, &self.location, guard_location, wait_time)
+        LockGuard::from_wait_guard(guard, wait_guard, wait_time)
     }
 
     pub fn try_lock(&self) -> Option<LockGuard<MutexGuard<'_, T>>> {
@@ -89,10 +100,19 @@ impl<T> RwLock<T> {
         let guard_location = call_location();
         #[cfg(feature = "tracing")]
         trace!("Acquiring a {:?} guard at {}", guard_kind, guard_location);
+
+        // Fast path -- try to acquire lock without blocking first
         let timestamp = Instant::now();
+        if let Some(guard) = self.lock.try_read() {
+            let wait_time = timestamp.elapsed();
+            return LockGuard::new(guard, guard_kind, &self.location, guard_location, wait_time);
+        }
+
+        // Lock is contended, create WaitGuard and block
+        let wait_guard = WaitGuard::new(guard_kind, &self.location, guard_location);
         let guard = self.lock.read();
         let wait_time = timestamp.elapsed();
-        LockGuard::new(guard, guard_kind, &self.location, guard_location, wait_time)
+        LockGuard::from_wait_guard(guard, wait_guard, wait_time)
     }
 
     pub fn try_read(&self) -> Option<LockGuard<RwLockReadGuard<'_, T>>> {
@@ -129,10 +149,19 @@ impl<T> RwLock<T> {
         let guard_location = call_location();
         #[cfg(feature = "tracing")]
         trace!("Acquiring a {:?} guard at {}", guard_kind, guard_location);
+
+        // Fast path -- try to acquire lock without blocking first
         let timestamp = Instant::now();
+        if let Some(guard) = self.lock.try_write() {
+            let wait_time = timestamp.elapsed();
+            return LockGuard::new(guard, guard_kind, &self.location, guard_location, wait_time);
+        }
+
+        // Lock is contended, create WaitGuard and block
+        let wait_guard = WaitGuard::new(guard_kind, &self.location, guard_location);
         let guard = self.lock.write();
         let wait_time = timestamp.elapsed();
-        LockGuard::new(guard, guard_kind, &self.location, guard_location, wait_time)
+        LockGuard::from_wait_guard(guard, wait_guard, wait_time)
     }
 
     pub fn try_write(&self) -> Option<LockGuard<RwLockWriteGuard<'_, T>>> {

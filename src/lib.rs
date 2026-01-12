@@ -7,7 +7,7 @@ pub mod std;
 pub mod tokio;
 
 pub use lock_info::{
-    lock_snapshots, GuardInfo, GuardKind, Location, LockGuard, LockInfo, LockKind,
+    lock_snapshots, GuardInfo, GuardKind, Location, LockGuard, LockInfo, LockKind, WaitGuard,
 };
 
 #[cfg(feature = "test")]
