@@ -24,6 +24,12 @@ macro_rules! check_guard {
             let lock_location = &$guard.lock_location;
             let guard_location = &$guard.guard_location;
             assert_eq!(guard_location.line, line!() - 1);
+            assert!(
+                guard_location.path.ends_with(file!()),
+                "guard location path should end with '{}', got '{}'",
+                file!(),
+                guard_location.path.display()
+            );
             let locks = lock_snapshots();
             let lock = locks.iter().find(|l| l.location == *lock_location).unwrap();
             let guard = lock.known_guards.get(guard_location).unwrap();
@@ -33,5 +39,21 @@ macro_rules! check_guard {
     }};
 }
 
+/// Verifies the lock location embedded in a guard (line and file path).
+#[macro_export]
+macro_rules! check_lock_loc {
+    ($guard:expr, $line:expr) => {{
+        let loc = &$guard.lock_location;
+        assert_eq!(loc.line, $line, "lock location line mismatch");
+        assert!(
+            loc.path.ends_with(file!()),
+            "lock location path should end with '{}', got '{}'",
+            file!(),
+            loc.path.display()
+        );
+    }};
+}
+
+#[derive(Default)]
 #[allow(unused)]
 pub struct Object;
