@@ -36,30 +36,13 @@ impl fmt::Display for Location {
 }
 
 // Provides the means to procure the location of a lock or its guard.
+#[track_caller]
 pub(crate) fn call_location() -> Location {
-    let backtrace = backtrace::Backtrace::new();
-    let frames = backtrace.frames();
-    let symbol = frames
-        .iter()
-        .flat_map(|frame| frame.symbols())
-        .find(|symbol| {
-            if let Some(filename) = symbol.filename().and_then(|path| path.to_str()) {
-                if cfg!(feature = "test") {
-                    filename.contains("tests")
-                } else {
-                    !filename.contains("locktick") && !filename.contains("rustc")
-                }
-            } else {
-                false
-            }
-        })
-        .unwrap();
-    let path = symbol.filename().unwrap().into();
-
+    let loc = std::panic::Location::caller();
     Location {
-        path,
-        line: symbol.lineno().unwrap(),
-        col: symbol.colno().unwrap(),
+        path: Arc::from(Path::new(loc.file())),
+        line: loc.line(),
+        col: loc.column(),
     }
 }
 
@@ -90,6 +73,7 @@ pub struct LockInfo {
 impl LockInfo {
     /// Registers the creation of a lock; this is meant to be called
     /// when creating wrapper objects for different kinds of locks.
+    #[track_caller]
     pub(crate) fn register(kind: LockKind) -> Location {
         let location = call_location();
 

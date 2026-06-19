@@ -1,3 +1,9 @@
+# 0.6.0
+
+### Changed
+
+- `backtrace` is no longer a dependency
+
 # 0.5.0
 
 ### Added

@@ -15,6 +15,7 @@ pub struct Mutex<T> {
 }
 
 impl<T> Mutex<T> {
+    #[track_caller]
     pub fn new(item: T) -> Self {
         Self {
             lock: parking_lot::Mutex::new(item),
@@ -22,6 +23,7 @@ impl<T> Mutex<T> {
         }
     }
 
+    #[track_caller]
     pub fn lock(&self) -> LockGuard<MutexGuard<'_, T>> {
         let guard_kind = GuardKind::Lock;
         let guard_location = call_location();
@@ -42,6 +44,7 @@ impl<T> Mutex<T> {
         LockGuard::from_wait_guard(guard, wait_guard, wait_time)
     }
 
+    #[track_caller]
     pub fn try_lock(&self) -> Option<LockGuard<MutexGuard<'_, T>>> {
         let guard_kind = GuardKind::Lock;
         let guard_location = call_location();
@@ -73,6 +76,7 @@ impl<T> Mutex<T> {
 }
 
 impl<T: Default> Default for Mutex<T> {
+    #[track_caller]
     fn default() -> Self {
         Self {
             lock: Default::default(),
@@ -88,6 +92,7 @@ pub struct RwLock<T> {
 }
 
 impl<T> RwLock<T> {
+    #[track_caller]
     pub fn new(item: T) -> Self {
         Self {
             lock: parking_lot::RwLock::new(item),
@@ -95,6 +100,7 @@ impl<T> RwLock<T> {
         }
     }
 
+    #[track_caller]
     pub fn read(&self) -> LockGuard<RwLockReadGuard<'_, T>> {
         let guard_kind = GuardKind::Read;
         let guard_location = call_location();
@@ -115,6 +121,7 @@ impl<T> RwLock<T> {
         LockGuard::from_wait_guard(guard, wait_guard, wait_time)
     }
 
+    #[track_caller]
     pub fn try_read(&self) -> Option<LockGuard<RwLockReadGuard<'_, T>>> {
         let guard_kind = GuardKind::Read;
         let guard_location = call_location();
@@ -144,6 +151,7 @@ impl<T> RwLock<T> {
         ))
     }
 
+    #[track_caller]
     pub fn write(&self) -> LockGuard<RwLockWriteGuard<'_, T>> {
         let guard_kind = GuardKind::Write;
         let guard_location = call_location();
@@ -164,6 +172,7 @@ impl<T> RwLock<T> {
         LockGuard::from_wait_guard(guard, wait_guard, wait_time)
     }
 
+    #[track_caller]
     pub fn try_write(&self) -> Option<LockGuard<RwLockWriteGuard<'_, T>>> {
         let guard_kind = GuardKind::Write;
         let guard_location = call_location();
@@ -199,6 +208,7 @@ impl<T> RwLock<T> {
 }
 
 impl<T: Default> Default for RwLock<T> {
+    #[track_caller]
     fn default() -> Self {
         Self {
             lock: Default::default(),

@@ -17,6 +17,7 @@ pub struct Mutex<T> {
 }
 
 impl<T> Mutex<T> {
+    #[track_caller]
     pub fn new(item: T) -> Self {
         Self {
             lock: std::sync::Mutex::new(item),
@@ -24,6 +25,7 @@ impl<T> Mutex<T> {
         }
     }
 
+    #[track_caller]
     pub fn lock(&self) -> Result<LockGuard<MutexGuard<'_, T>>, PoisonError<MutexGuard<'_, T>>> {
         let guard_kind = GuardKind::Lock;
         let guard_location = call_location();
@@ -58,6 +60,7 @@ impl<T> Mutex<T> {
         Ok(LockGuard::from_wait_guard(guard, wait_guard, wait_time))
     }
 
+    #[track_caller]
     pub fn try_lock(
         &self,
     ) -> Result<LockGuard<MutexGuard<'_, T>>, TryLockError<MutexGuard<'_, T>>> {
@@ -90,6 +93,7 @@ impl<T> Mutex<T> {
 }
 
 impl<T: Default> Default for Mutex<T> {
+    #[track_caller]
     fn default() -> Self {
         Self {
             lock: Default::default(),
@@ -105,6 +109,7 @@ pub struct RwLock<T> {
 }
 
 impl<T> RwLock<T> {
+    #[track_caller]
     pub fn new(item: T) -> Self {
         Self {
             lock: std::sync::RwLock::new(item),
@@ -112,6 +117,7 @@ impl<T> RwLock<T> {
         }
     }
 
+    #[track_caller]
     pub fn read(
         &self,
     ) -> Result<LockGuard<RwLockReadGuard<'_, T>>, PoisonError<RwLockReadGuard<'_, T>>> {
@@ -148,6 +154,7 @@ impl<T> RwLock<T> {
         Ok(LockGuard::from_wait_guard(guard, wait_guard, wait_time))
     }
 
+    #[track_caller]
     pub fn try_read(
         &self,
     ) -> Result<LockGuard<RwLockReadGuard<'_, T>>, TryLockError<RwLockReadGuard<'_, T>>> {
@@ -177,6 +184,7 @@ impl<T> RwLock<T> {
         ))
     }
 
+    #[track_caller]
     pub fn write(
         &self,
     ) -> Result<LockGuard<RwLockWriteGuard<'_, T>>, PoisonError<RwLockWriteGuard<'_, T>>> {
@@ -213,6 +221,7 @@ impl<T> RwLock<T> {
         Ok(LockGuard::from_wait_guard(guard, wait_guard, wait_time))
     }
 
+    #[track_caller]
     pub fn try_write(
         &self,
     ) -> Result<LockGuard<RwLockWriteGuard<'_, T>>, TryLockError<RwLockWriteGuard<'_, T>>> {
@@ -244,6 +253,7 @@ impl<T> RwLock<T> {
 }
 
 impl<T: Default> Default for RwLock<T> {
+    #[track_caller]
     fn default() -> Self {
         Self {
             lock: Default::default(),
