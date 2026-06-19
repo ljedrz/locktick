@@ -1,5 +1,9 @@
 # 0.6.0
 
+### Added
+
+- `try_{lock/read/write}_for` for `parking_lot`
+
 ### Changed
 
 - `backtrace` is no longer a dependency

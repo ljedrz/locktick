@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use parking_lot::{MutexGuard, RwLockReadGuard, RwLockWriteGuard};
 #[cfg(feature = "tracing")]
@@ -59,6 +59,36 @@ impl<T> Mutex<T> {
             #[cfg(feature = "tracing")]
             trace!(
                 "Failed to acquire a {:?} guard at {}",
+                guard_kind,
+                guard_location,
+            );
+            None
+        })?;
+        let wait_time = timestamp.elapsed();
+        Some(LockGuard::new(
+            guard,
+            guard_kind,
+            &self.location,
+            guard_location,
+            wait_time,
+        ))
+    }
+
+    #[track_caller]
+    pub fn try_lock_for(&self, timeout: Duration) -> Option<LockGuard<MutexGuard<'_, T>>> {
+        let guard_kind = GuardKind::Lock;
+        let guard_location = call_location();
+        #[cfg(feature = "tracing")]
+        trace!(
+            "Attempting to acquire a {:?} guard at {} in {timeout:?}",
+            guard_kind,
+            guard_location
+        );
+        let timestamp = Instant::now();
+        let guard = self.lock.try_lock_for(timeout).or_else(|| {
+            #[cfg(feature = "tracing")]
+            trace!(
+                "Failed to acquire a {:?} guard at {} in {timeout:?}",
                 guard_kind,
                 guard_location,
             );
@@ -152,6 +182,36 @@ impl<T> RwLock<T> {
     }
 
     #[track_caller]
+    pub fn try_read_for(&self, timeout: Duration) -> Option<LockGuard<RwLockReadGuard<'_, T>>> {
+        let guard_kind = GuardKind::Read;
+        let guard_location = call_location();
+        #[cfg(feature = "tracing")]
+        trace!(
+            "Attempting to acquire a {:?} guard at {} in {timeout:?}",
+            guard_kind,
+            guard_location
+        );
+        let timestamp = Instant::now();
+        let guard = self.lock.try_read_for(timeout).or_else(|| {
+            #[cfg(feature = "tracing")]
+            trace!(
+                "Failed to acquire a {:?} guard at {} in {timeout:?}",
+                guard_kind,
+                guard_location,
+            );
+            None
+        })?;
+        let wait_time = timestamp.elapsed();
+        Some(LockGuard::new(
+            guard,
+            guard_kind,
+            &self.location,
+            guard_location,
+            wait_time,
+        ))
+    }
+
+    #[track_caller]
     pub fn write(&self) -> LockGuard<RwLockWriteGuard<'_, T>> {
         let guard_kind = GuardKind::Write;
         let guard_location = call_location();
@@ -187,6 +247,36 @@ impl<T> RwLock<T> {
             #[cfg(feature = "tracing")]
             trace!(
                 "Failed to acquire a {:?} guard at {}",
+                guard_kind,
+                guard_location,
+            );
+            None
+        })?;
+        let wait_time = timestamp.elapsed();
+        Some(LockGuard::new(
+            guard,
+            guard_kind,
+            &self.location,
+            guard_location,
+            wait_time,
+        ))
+    }
+
+    #[track_caller]
+    pub fn try_write_for(&self, timeout: Duration) -> Option<LockGuard<RwLockWriteGuard<'_, T>>> {
+        let guard_kind = GuardKind::Write;
+        let guard_location = call_location();
+        #[cfg(feature = "tracing")]
+        trace!(
+            "Attempting to acquire a {:?} guard at {} in {timeout:?}",
+            guard_kind,
+            guard_location
+        );
+        let timestamp = Instant::now();
+        let guard = self.lock.try_write_for(timeout).or_else(|| {
+            #[cfg(feature = "tracing")]
+            trace!(
+                "Failed to acquire a {:?} guard at {} in {timeout:?}",
                 guard_kind,
                 guard_location,
             );
