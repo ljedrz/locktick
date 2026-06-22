@@ -207,4 +207,61 @@ mod tests {
         let read = lock.read().unwrap();
         check_lock_loc!(read, lock_line);
     }
+
+    #[test]
+    #[serial]
+    fn contended_mutex() {
+        use std::sync::Arc;
+        use std::thread;
+        use std::time::Duration;
+
+        clear_lock_infos();
+
+        let lock = Arc::new(Mutex::new(0u32));
+        let held = lock.lock().unwrap();
+        check_guard!(held, 1, 1);
+
+        let lock_for_thread = Arc::clone(&lock);
+        let handle = thread::spawn(move || {
+            let _guard = lock_for_thread.lock().unwrap();
+        });
+
+        thread::sleep(Duration::from_millis(100));
+
+        let info = lock_snapshots().into_iter().next().unwrap();
+        let held_guard_info = info.known_guards.get(&held.guard_location).unwrap();
+        assert_eq!(held_guard_info.num_active_uses(), 1);
+        assert_eq!(held_guard_info.num_waiting(), 0);
+        assert!(held_guard_info.is_in_use());
+
+        let waiting_guard_info = info
+            .known_guards
+            .values()
+            .find(|g| g.num_waiting() == 1)
+            .expect("a thread should be waiting on the lock");
+        assert_eq!(waiting_guard_info.num_active_uses(), 0);
+        assert_eq!(waiting_guard_info.num_waiting(), 1);
+        let waiting = waiting_guard_info.waiting_call_indices();
+        let active = held_guard_info.active_call_indices();
+        assert_eq!(waiting.len(), 1);
+        assert_eq!(active.len(), 1);
+        assert!(waiting[0] > active[0]);
+
+        drop(held);
+        handle.join().unwrap();
+
+        let info = lock_snapshots().into_iter().next().unwrap();
+        assert_eq!(info.known_guards.len(), 2);
+        for g in info.known_guards.values() {
+            assert_eq!(g.num_active_uses(), 0);
+            assert_eq!(g.num_waiting(), 0);
+            assert!(!g.is_in_use());
+        }
+        let thread_guard_info = info
+            .known_guards
+            .values()
+            .find(|g| g.max_wait_time > Duration::ZERO)
+            .expect("the waiting thread's guard_info should have recorded a wait time");
+        assert_eq!(thread_guard_info.num_uses, 1);
+    }
 }

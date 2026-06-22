@@ -1,5 +1,5 @@
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::HashMap,
     fmt,
     ops::{Deref, DerefMut},
     path::Path,
@@ -77,19 +77,19 @@ impl LockInfo {
     pub(crate) fn register(kind: LockKind) -> Location {
         let location = call_location();
 
-        match LOCK_INFOS.write().unwrap().entry(location.clone()) {
-            Entry::Vacant(entry) => {
-                let info = Mutex::new(Self {
+        LOCK_INFOS
+            .write()
+            .unwrap()
+            .entry(location.clone())
+            .or_insert_with(|| {
+                Mutex::new(Self {
                     kind,
                     location: location.clone(),
                     known_guards: Default::default(),
-                });
+                })
+            });
 
-                entry.insert(info);
-                location
-            }
-            Entry::Occupied(entry) => entry.get().lock().unwrap().location.clone(),
-        }
+        location
     }
 }
 

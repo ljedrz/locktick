@@ -28,5 +28,5 @@ tracing = { version = "0.1", default-features = false, features = ["std"], optio
 
 [dev-dependencies]
 locktick = { path = ".", default-features = false, features = ["test"] }
-tokio = { version = "1", features = ["macros", "rt"] }
+tokio = { version = "1", features = ["macros", "rt", "time"] }
 serial_test = { version = "3", default-features = false, features = ["async"] }

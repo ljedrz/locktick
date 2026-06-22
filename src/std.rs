@@ -73,7 +73,6 @@ impl<T> Mutex<T> {
             self.location
         );
         let timestamp = Instant::now();
-        #[allow(clippy::map_identity)]
         let guard = self.lock.try_lock().inspect_err(|_e| {
             #[cfg(feature = "tracing")]
             trace!(
