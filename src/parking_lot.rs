@@ -84,8 +84,26 @@ impl<T> Mutex<T> {
             guard_kind,
             guard_location
         );
+        // Fast path -- try to acquire lock without blocking first
         let timestamp = Instant::now();
-        let guard = self.lock.try_lock_for(timeout).or_else(|| {
+        if let Some(guard) = self.lock.try_lock() {
+            let wait_time = timestamp.elapsed();
+            return Some(LockGuard::new(
+                guard,
+                guard_kind,
+                &self.location,
+                guard_location,
+                wait_time,
+            ));
+        }
+
+        // Lock is contended, create WaitGuard and block until the timeout
+        let wait_guard = WaitGuard::new(guard_kind, &self.location, guard_location.clone());
+        if let Some(guard) = self.lock.try_lock_for(timeout) {
+            let wait_time = timestamp.elapsed();
+            Some(LockGuard::from_wait_guard(guard, wait_guard, wait_time))
+        } else {
+            // The WaitGuard is dropped here, unregistering the waiting thread
             #[cfg(feature = "tracing")]
             trace!(
                 "Failed to acquire a {:?} guard at {} in {timeout:?}",
@@ -93,15 +111,7 @@ impl<T> Mutex<T> {
                 guard_location,
             );
             None
-        })?;
-        let wait_time = timestamp.elapsed();
-        Some(LockGuard::new(
-            guard,
-            guard_kind,
-            &self.location,
-            guard_location,
-            wait_time,
-        ))
+        }
     }
 }
 
@@ -191,8 +201,26 @@ impl<T> RwLock<T> {
             guard_kind,
             guard_location
         );
+        // Fast path -- try to acquire lock without blocking first
         let timestamp = Instant::now();
-        let guard = self.lock.try_read_for(timeout).or_else(|| {
+        if let Some(guard) = self.lock.try_read() {
+            let wait_time = timestamp.elapsed();
+            return Some(LockGuard::new(
+                guard,
+                guard_kind,
+                &self.location,
+                guard_location,
+                wait_time,
+            ));
+        }
+
+        // Lock is contended, create WaitGuard and block until the timeout
+        let wait_guard = WaitGuard::new(guard_kind, &self.location, guard_location.clone());
+        if let Some(guard) = self.lock.try_read_for(timeout) {
+            let wait_time = timestamp.elapsed();
+            Some(LockGuard::from_wait_guard(guard, wait_guard, wait_time))
+        } else {
+            // The WaitGuard is dropped here, unregistering the waiting thread
             #[cfg(feature = "tracing")]
             trace!(
                 "Failed to acquire a {:?} guard at {} in {timeout:?}",
@@ -200,15 +228,7 @@ impl<T> RwLock<T> {
                 guard_location,
             );
             None
-        })?;
-        let wait_time = timestamp.elapsed();
-        Some(LockGuard::new(
-            guard,
-            guard_kind,
-            &self.location,
-            guard_location,
-            wait_time,
-        ))
+        }
     }
 
     #[track_caller]
@@ -272,8 +292,26 @@ impl<T> RwLock<T> {
             guard_kind,
             guard_location
         );
+        // Fast path -- try to acquire lock without blocking first
         let timestamp = Instant::now();
-        let guard = self.lock.try_write_for(timeout).or_else(|| {
+        if let Some(guard) = self.lock.try_write() {
+            let wait_time = timestamp.elapsed();
+            return Some(LockGuard::new(
+                guard,
+                guard_kind,
+                &self.location,
+                guard_location,
+                wait_time,
+            ));
+        }
+
+        // Lock is contended, create WaitGuard and block until the timeout
+        let wait_guard = WaitGuard::new(guard_kind, &self.location, guard_location.clone());
+        if let Some(guard) = self.lock.try_write_for(timeout) {
+            let wait_time = timestamp.elapsed();
+            Some(LockGuard::from_wait_guard(guard, wait_guard, wait_time))
+        } else {
+            // The WaitGuard is dropped here, unregistering the waiting thread
             #[cfg(feature = "tracing")]
             trace!(
                 "Failed to acquire a {:?} guard at {} in {timeout:?}",
@@ -281,15 +319,7 @@ impl<T> RwLock<T> {
                 guard_location,
             );
             None
-        })?;
-        let wait_time = timestamp.elapsed();
-        Some(LockGuard::new(
-            guard,
-            guard_kind,
-            &self.location,
-            guard_location,
-            wait_time,
-        ))
+        }
     }
 
     pub fn into_inner(self) -> T {

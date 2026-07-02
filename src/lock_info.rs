@@ -171,7 +171,8 @@ impl<T> LockGuard<T> {
         let guard_location = wait_guard.guard_location.clone();
         let guard_index = wait_guard.wait_index;
 
-        // Consume the wait guard without running its Drop impl
+        // Consume the wait guard, neutralizing its Drop logic; the transition
+        // from waiting to active is recorded below under a single lock
         wait_guard.finish();
 
         #[cfg(feature = "tracing")]
@@ -253,8 +254,9 @@ impl WaitGuard {
         }
     }
 
-    /// Marks this WaitGuard as finished, preventing the Drop impl from running.
-    /// This should be called when the lock has been successfully acquired.
+    /// Consumes this WaitGuard, making its Drop impl a no-op so that the waiting
+    /// task is not unregistered twice. This should be called when the lock has
+    /// been successfully acquired.
     pub(crate) fn finish(mut self) {
         self.finished = true;
     }

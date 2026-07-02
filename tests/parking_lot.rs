@@ -292,6 +292,57 @@ mod tests {
         });
         handle.join().unwrap();
         drop(_held);
+
+        // The timed-out thread should no longer be registered as waiting.
+        let info = lock_snapshots().into_iter().next().unwrap();
+        for g in info.known_guards.values() {
+            assert_eq!(g.num_waiting(), 0);
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn try_lock_for_contended() {
+        use std::sync::Arc;
+        use std::thread;
+        use std::time::Duration;
+
+        clear_lock_infos();
+
+        let lock = Arc::new(Mutex::new(Object));
+        let held = lock.lock();
+
+        let lock_clone = Arc::clone(&lock);
+        let handle = thread::spawn(move || {
+            let _guard = lock_clone.try_lock_for(Duration::from_secs(5)).unwrap();
+        });
+
+        thread::sleep(Duration::from_millis(100));
+
+        // The thread blocked in try_lock_for should be registered as waiting.
+        let info = lock_snapshots().into_iter().next().unwrap();
+        let waiting_guard_info = info
+            .known_guards
+            .values()
+            .find(|g| g.num_waiting() == 1)
+            .expect("a thread should be waiting on the lock");
+        assert_eq!(waiting_guard_info.num_active_uses(), 0);
+        assert!(waiting_guard_info.is_in_use());
+
+        drop(held);
+        handle.join().unwrap();
+
+        let info = lock_snapshots().into_iter().next().unwrap();
+        for g in info.known_guards.values() {
+            assert_eq!(g.num_active_uses(), 0);
+            assert_eq!(g.num_waiting(), 0);
+        }
+        let thread_guard_info = info
+            .known_guards
+            .values()
+            .find(|g| g.max_wait_time > Duration::ZERO)
+            .expect("the waiting thread's guard_info should have recorded a wait time");
+        assert_eq!(thread_guard_info.num_uses, 1);
     }
 
     #[test]
@@ -346,7 +397,9 @@ mod tests {
         let _held = lock.write();
         let lock_clone = Arc::clone(&lock);
         let handle = thread::spawn(move || {
-            assert!(lock_clone.try_write_for(Duration::from_millis(50)).is_none());
+            assert!(lock_clone
+                .try_write_for(Duration::from_millis(50))
+                .is_none());
         });
         handle.join().unwrap();
         drop(_held);
