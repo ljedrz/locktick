@@ -59,6 +59,13 @@ fn print_active_guards() {
 }
 ```
 
+## crate features
+
+- `std` *(default)*: wrappers for the `std::sync` `Mutex` and `RwLock`
+- `parking_lot`: wrappers for the `parking_lot` `Mutex` and `RwLock`
+- `tokio`: wrappers for the `tokio::sync` `Mutex` and `RwLock`
+- `tracing`: emits TRACE-level logs related to the tracked guards
+
 ## status
 
 - the basic functionalities are complete
